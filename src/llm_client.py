@@ -8,8 +8,13 @@ import re
 from abc import ABC, abstractmethod
 from typing import Any
 
+from dotenv import load_dotenv
+
+# Load .env file if present
+load_dotenv()
+
 from .schemas import (
-    TriageResult, ExtractedFields, ReplyDraft, GuardrailStatus,
+    TriageResult, ExtractedFields, ReplyDraft, GuardrailStatus, InputGuardrailStatus,
     Urgency, Category, Sentiment, SupportTicket
 )
 
@@ -380,8 +385,73 @@ Support Team"""
             citations=citations
         )
     
+    def mock_input_guardrail(self, ticket: SupportTicket) -> InputGuardrailStatus:
+        """Run mock input guardrail checks."""
+        import re
+        
+        issues = []
+        risk_level = "low"
+        blocked = False
+        
+        combined_text = f"{ticket.subject} {ticket.body}".lower()
+        
+        # Check for obvious prompt injection patterns
+        injection_patterns = [
+            r"ignore (?:all |any )?(?:previous |prior )?instructions?",
+            r"you are now",
+            r"pretend (?:to be|you are)",
+            r"jailbreak",
+            r"dan mode",
+        ]
+        for pattern in injection_patterns:
+            if re.search(pattern, combined_text, re.IGNORECASE):
+                issues.append(f"Potential prompt injection attempt detected")
+                risk_level = "high"
+                break
+        
+        # Check for toxic content
+        toxic_indicators = [
+            r"\b(?:stupid|idiot|moron)\s+(?:support|agent|team)\b",
+            r"(?:f+u+c+k+|sh+i+t+)\s+you",
+        ]
+        for pattern in toxic_indicators:
+            if re.search(pattern, combined_text, re.IGNORECASE):
+                issues.append("Potentially abusive language detected")
+                if risk_level == "low":
+                    risk_level = "medium"
+                break
+        
+        # Check for spam patterns
+        url_count = len(re.findall(r'https?://\S+', combined_text))
+        if url_count > 5:
+            issues.append(f"Excessive URLs detected ({url_count})")
+            if risk_level == "low":
+                risk_level = "medium"
+        
+        # Check for malicious payloads
+        malicious_patterns = [
+            r"<script",
+            r"drop\s+table",
+            r"union\s+select",
+        ]
+        for pattern in malicious_patterns:
+            if re.search(pattern, combined_text, re.IGNORECASE):
+                issues.append("Potential malicious payload detected")
+                risk_level = "critical"
+                blocked = True
+                break
+        
+        passed = len(issues) == 0
+        
+        return InputGuardrailStatus(
+            passed=passed,
+            blocked=blocked,
+            issues_found=issues,
+            risk_level=risk_level
+        )
+    
     def mock_guardrail(self, reply: ReplyDraft, kb_hits: list) -> GuardrailStatus:
-        """Run mock guardrail checks."""
+        """Run mock output guardrail checks."""
         issues = []
         fixes = []
         
@@ -409,6 +479,18 @@ Support Team"""
         # Check for PII exposure
         if "@" in reply.customer_reply and ".com" in reply.customer_reply:
             issues.append("Potential email address in reply - verify it's appropriate")
+        
+        # Check for competitor mentions
+        competitors = ["zendesk", "freshdesk", "salesforce", "intercom"]
+        for competitor in competitors:
+            if competitor in reply_lower:
+                issues.append(f"Competitor mention detected: {competitor}")
+        
+        # Check for internal info leaking
+        internal_terms = ["sla", "p0", "p1", "escalated internally"]
+        for term in internal_terms:
+            if term in reply_lower and term in reply.internal_notes.lower():
+                issues.append(f"Internal term may have leaked: {term}")
         
         passed = len(issues) == 0 or len(fixes) >= len(issues)
         

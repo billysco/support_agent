@@ -120,6 +120,16 @@ class GuardrailStatus(BaseModel):
     fixes_applied: list[str] = Field(default_factory=list, description="List of fixes that were applied")
 
 
+class InputGuardrailStatus(BaseModel):
+    """Result of guardrail checks on user input."""
+    passed: bool = Field(..., description="Whether all input guardrails passed")
+    blocked: bool = Field(default=False, description="Whether the input should be blocked entirely")
+    issues_found: list[str] = Field(default_factory=list, description="List of issues detected")
+    sanitized_subject: Optional[str] = Field(default=None, description="Sanitized subject if modified")
+    sanitized_body: Optional[str] = Field(default=None, description="Sanitized body if modified")
+    risk_level: str = Field(default="low", description="Risk level: low, medium, high, critical")
+
+
 class AutoReplyInfo(BaseModel):
     """Information about auto-reply decision."""
     is_auto_reply: bool = Field(default=False, description="Whether this reply was auto-generated from similar ticket")
@@ -136,7 +146,8 @@ class PipelineResult(BaseModel):
     routing: RoutingDecision = Field(..., description="Routing decision")
     kb_hits: list[KBHit] = Field(default_factory=list, description="Knowledge base search results")
     reply: ReplyDraft = Field(..., description="Draft reply for customer")
-    guardrail_status: GuardrailStatus = Field(..., description="Guardrail check results")
+    input_guardrail_status: InputGuardrailStatus = Field(default_factory=InputGuardrailStatus, description="Input guardrail check results")
+    guardrail_status: GuardrailStatus = Field(..., description="Output guardrail check results")
     processing_mode: str = Field(default="mock", description="Whether processed in 'real' or 'mock' mode")
     auto_reply: AutoReplyInfo = Field(default_factory=AutoReplyInfo, description="Auto-reply information")
 

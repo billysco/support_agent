@@ -8,17 +8,14 @@ An AI-powered system that automatically classifies support tickets, extracts key
 # Install dependencies
 pip install -r requirements.txt
 
-# Run CLI demo (mock mode - no API key needed)
-python -m src.demo
-
-# Run web server
+# Run web server (mock mode - no API key needed)
 python -m src.server
 # Open http://localhost:8000
 
 # Run with real LLM
 set OPENAI_API_KEY=sk-your-key-here  # Windows
 export OPENAI_API_KEY=sk-your-key-here  # Linux/Mac
-python -m src.demo
+python -m src.server
 ```
 
 ## Features
@@ -70,15 +67,14 @@ python -m src.demo
 tribe_interview/
 ├── src/
 │   ├── __init__.py
-│   ├── __main__.py           # CLI entry point
-│   ├── demo.py               # Demo runner
 │   ├── server.py             # FastAPI web server
 │   ├── schemas.py            # Pydantic models
 │   ├── llm_client.py         # LLM interface (OpenAI + Mock)
 │   ├── utils.py              # Logging, redaction
 │   ├── kb/
 │   │   ├── indexer.py        # ChromaDB indexing
-│   │   └── retriever.py      # LangChain retrieval
+│   │   ├── retriever.py      # LangChain retrieval
+│   │   └── ticket_history.py # Similar ticket detection
 │   └── pipeline/
 │       ├── triage.py         # Classification + extraction
 │       ├── routing.py        # Team routing + SLA
@@ -90,7 +86,7 @@ tribe_interview/
 │   └── app.js                # Frontend logic
 ├── kb/                       # Knowledge base (8 docs)
 ├── data/
-│   └── sample_tickets.json   # 3 demo tickets
+│   └── sample_tickets.json   # 3 sample tickets
 ├── tests/
 │   ├── test_pipeline.py      # Integration tests
 │   └── test_kb.py            # KB tests
@@ -270,19 +266,13 @@ Total: 2-3 LLM calls per ticket
 
 > "This is a Customer Support Triage system that automatically classifies tickets, extracts key fields, routes to the right team, and drafts replies with knowledge base citations."
 
-**CLI Demo:**
-```bash
-python -m src.demo
-```
-
-> "Three tickets processed - the enterprise outage gets P0 with escalation, billing goes to billing team, and the bug report routes to engineering with low priority."
-
-**Web Demo:**
 ```bash
 python -m src.server
 ```
 
 > "Load a sample ticket, click Process, and see triage, routing, and the draft reply with KB citations."
+
+> "Three tickets processed - the enterprise outage gets P0 with escalation, billing goes to billing team, and the bug report routes to engineering with low priority."
 
 > "Works in mock mode without an API key - the demo never fails."
 

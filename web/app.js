@@ -22,6 +22,7 @@ const elements = {
     viewCreate: document.getElementById('viewCreate'),
     viewDetail: document.getElementById('viewDetail'),
     viewKb: document.getElementById('viewKb'),
+    viewAdmin: document.getElementById('viewAdmin'),
     
     // Tickets list
     ticketsList: document.getElementById('ticketsList'),
@@ -80,6 +81,19 @@ const elements = {
     kbSearchInput: document.getElementById('kbSearchInput'),
     kbSearchResults: document.getElementById('kbSearchResults'),
     
+    // Admin view
+    knownIssueForm: document.getElementById('knownIssueForm'),
+    clearIssueForm: document.getElementById('clearIssueForm'),
+    submitIssue: document.getElementById('submitIssue'),
+    issueId: document.getElementById('issueId'),
+    issueTitle: document.getElementById('issueTitle'),
+    issueStatus: document.getElementById('issueStatus'),
+    issueSeverity: document.getElementById('issueSeverity'),
+    issueAffected: document.getElementById('issueAffected'),
+    issueExpectedResolution: document.getElementById('issueExpectedResolution'),
+    issueDescription: document.getElementById('issueDescription'),
+    issueWorkaround: document.getElementById('issueWorkaround'),
+    
     // Toast
     toast: document.getElementById('toast')
 };
@@ -91,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCreateForm();
     initDetailView();
     initKbView();
+    initAdminView();
     checkMode();
     loadSampleTickets();
 });
@@ -130,6 +145,9 @@ function switchView(viewName) {
             break;
         case 'detail':
             elements.viewDetail.classList.add('active');
+            break;
+        case 'admin':
+            elements.viewAdmin.classList.add('active');
             break;
     }
 }
@@ -532,10 +550,27 @@ function displayKbResults(kbHits) {
 }
 
 function displayReply(result) {
-    const guardrail = result.guardrail_status;
+    const outputGuardrail = result.guardrail_status;
+    const inputGuardrail = result.input_guardrail_status;
     
-    elements.guardrailStatus.className = `guardrail-status ${guardrail.passed ? 'passed' : 'failed'}`;
-    elements.guardrailStatus.querySelector('.guardrail-text').textContent = guardrail.passed ? 'Approved' : 'Review Required';
+    // Determine overall guardrail status
+    const inputPassed = !inputGuardrail || inputGuardrail.passed;
+    const outputPassed = outputGuardrail.passed;
+    const blocked = inputGuardrail?.blocked;
+    
+    let statusClass = 'passed';
+    let statusText = 'Approved';
+    
+    if (blocked) {
+        statusClass = 'blocked';
+        statusText = 'Blocked';
+    } else if (!inputPassed || !outputPassed) {
+        statusClass = 'failed';
+        statusText = 'Review Required';
+    }
+    
+    elements.guardrailStatus.className = `guardrail-status ${statusClass}`;
+    elements.guardrailStatus.querySelector('.guardrail-text').textContent = statusText;
     
     elements.replyContent.textContent = result.reply.customer_reply;
 }
@@ -544,8 +579,26 @@ function displayNotes(result) {
     const notes = result.reply.internal_notes;
     const triage = result.triage;
     const routing = result.routing;
+    const inputGuardrail = result.input_guardrail_status;
+    const outputGuardrail = result.guardrail_status;
 
     let notesHtml = '';
+
+    // Input guardrail notice
+    if (inputGuardrail && (inputGuardrail.blocked || !inputGuardrail.passed)) {
+        const bgColor = inputGuardrail.blocked ? 'rgba(239, 68, 68, 0.1)' : 'rgba(240, 180, 41, 0.1)';
+        const borderColor = inputGuardrail.blocked ? 'var(--urgency-p0)' : 'var(--urgency-p2)';
+        const titleColor = inputGuardrail.blocked ? 'var(--urgency-p0)' : 'var(--urgency-p1)';
+        const title = inputGuardrail.blocked ? 'INPUT BLOCKED' : 'INPUT FLAGGED';
+        
+        notesHtml += `<div style="background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <strong style="color: ${titleColor};">${title}</strong>
+            <p style="margin: 8px 0 0 0; font-size: 13px;">
+                Risk Level: <strong>${(inputGuardrail.risk_level || 'unknown').toUpperCase()}</strong><br>
+                ${inputGuardrail.issues_found?.length > 0 ? `Issues: <strong>${inputGuardrail.issues_found.join(', ')}</strong>` : ''}
+            </p>
+        </div>`;
+    }
 
     // Auto-reply notice
     if (result.auto_reply?.is_auto_reply) {
@@ -573,10 +626,10 @@ function displayNotes(result) {
     // Generated notes
     notesHtml += `<strong>Agent Notes:</strong>\n${notes}`;
 
-    // Guardrail issues
-    if (result.guardrail_status.issues_found && result.guardrail_status.issues_found.length > 0) {
-        notesHtml += `\n\n<strong style="color: var(--urgency-p1);">Guardrail Issues:</strong>\n`;
-        notesHtml += result.guardrail_status.issues_found.map(issue => `- ${issue}`).join('\n');
+    // Output guardrail issues
+    if (outputGuardrail.issues_found && outputGuardrail.issues_found.length > 0) {
+        notesHtml += `\n\n<strong style="color: var(--urgency-p1);">Output Guardrail Issues:</strong>\n`;
+        notesHtml += outputGuardrail.issues_found.map(issue => `- ${issue}`).join('\n');
     }
 
     elements.notesContent.innerHTML = notesHtml;
@@ -651,6 +704,69 @@ function displayKbSearchResults(results) {
             <div class="kb-item-score">Relevance: ${(hit.relevance_score * 100).toFixed(0)}%</div>
         </div>
     `).join('');
+}
+
+// Admin View
+function initAdminView() {
+    elements.knownIssueForm.addEventListener('submit', handleSubmitKnownIssue);
+    elements.clearIssueForm.addEventListener('click', resetKnownIssueForm);
+    
+    // Generate default issue ID
+    generateIssueId();
+}
+
+function generateIssueId() {
+    const year = new Date().getFullYear();
+    const random = String(Math.floor(Math.random() * 900) + 100);
+    elements.issueId.value = `API-${year}-${random}`;
+}
+
+function resetKnownIssueForm() {
+    elements.knownIssueForm.reset();
+    generateIssueId();
+}
+
+async function handleSubmitKnownIssue(e) {
+    e.preventDefault();
+    
+    const submitBtn = elements.submitIssue;
+    submitBtn.classList.add('loading');
+    submitBtn.disabled = true;
+    
+    // Build issue data
+    const issueData = {
+        issue_id: elements.issueId.value.trim(),
+        title: elements.issueTitle.value.trim(),
+        status: elements.issueStatus.value,
+        severity: elements.issueSeverity.value,
+        affected: elements.issueAffected.value.trim(),
+        expected_resolution: elements.issueExpectedResolution.value || null,
+        description: elements.issueDescription.value.trim(),
+        workaround: elements.issueWorkaround.value.trim()
+    };
+    
+    try {
+        const response = await fetch('/api/admin/known-issue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(issueData)
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to add known issue');
+        }
+        
+        const result = await response.json();
+        showToast('Known issue added to knowledge base!', 'success');
+        resetKnownIssueForm();
+        
+    } catch (error) {
+        showToast(`Error: ${error.message}`, 'error');
+    } finally {
+        submitBtn.classList.remove('loading');
+        submitBtn.disabled = false;
+    }
 }
 
 // Toast notifications

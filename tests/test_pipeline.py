@@ -14,7 +14,7 @@ from src.schemas import (
 )
 from src.llm_client import MockProvider
 from src.kb.retriever import KBRetriever
-from src.demo import process_ticket, load_sample_tickets
+from src.server import process_ticket, load_sample_tickets
 
 
 @pytest.fixture

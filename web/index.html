@@ -3,188 +3,453 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Support Triage System</title>
+    <title>Support Hub - Ticket Management</title>
     <link rel="stylesheet" href="/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <header class="header">
-            <div class="logo">
-                <div class="logo-icon">T</div>
-                <div class="logo-text">
-                    <h1>Support Triage</h1>
-                    <span class="subtitle">AI-Powered Ticket Classification</span>
-                </div>
-            </div>
-            <div class="mode-badge" id="modeBadge">
-                <span class="mode-dot"></span>
-                <span class="mode-text">Loading...</span>
-            </div>
-        </header>
-
-        <section class="input-section">
-            <div class="section-header">
-                <h2>Input Ticket</h2>
-                <div class="sample-buttons">
-                    <button class="btn btn-sample" data-sample="0">
-                        <span class="sample-icon urgent">!</span>
-                        Enterprise Outage
-                    </button>
-                    <button class="btn btn-sample" data-sample="1">
-                        <span class="sample-icon billing">$</span>
-                        Billing Issue
-                    </button>
-                    <button class="btn btn-sample" data-sample="2">
-                        <span class="sample-icon bug">B</span>
-                        Bug Report
-                    </button>
-                </div>
-            </div>
-            <div class="input-wrapper">
-                <textarea id="ticketInput" placeholder="Paste ticket JSON here or click a sample button above..."></textarea>
-                <div class="input-actions">
-                    <button class="btn btn-clear" id="clearBtn">Clear</button>
-                    <button class="btn btn-primary" id="processBtn">
-                        <span class="btn-text">Process Ticket</span>
-                        <span class="btn-loader"></span>
-                    </button>
-                </div>
-            </div>
-        </section>
-
-        <section class="results-section" id="resultsSection">
-            <div class="results-grid">
-                <!-- Triage Card -->
-                <div class="result-card triage-card">
-                    <div class="card-header">
-                        <h3>Triage</h3>
-                        <div class="urgency-badge" id="urgencyBadge">--</div>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <div class="brand-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
                     </div>
-                    <div class="card-content">
-                        <div class="stat-row">
-                            <span class="stat-label">Category</span>
-                            <span class="stat-value" id="category">--</span>
+                    <span class="brand-name">SupportHub</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-view="tickets">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    <span>All Tickets</span>
+                </button>
+                <button class="nav-item" data-view="create">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                    </svg>
+                    <span>New Ticket</span>
+                </button>
+                <button class="nav-item" data-view="kb">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                    </svg>
+                    <span>Knowledge Base</span>
+                </button>
+                <button class="nav-item" data-view="admin">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span>Admin</span>
+                </button>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="mode-indicator" id="modeIndicator">
+                    <span class="mode-dot"></span>
+                    <span class="mode-label">Loading...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Tickets List View -->
+            <section class="view view-tickets active" id="viewTickets">
+                <header class="view-header">
+                    <div class="view-title">
+                        <h1>Tickets</h1>
+                        <span class="ticket-count" id="ticketCount">0 tickets</span>
+                    </div>
+                    <button class="btn btn-primary" id="newTicketBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        New Ticket
+                    </button>
+                </header>
+                
+                <div class="tickets-container">
+                    <div class="tickets-list" id="ticketsList">
+                        <!-- Tickets populated by JS -->
+                    </div>
+                    
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                            </svg>
                         </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Sentiment</span>
-                            <span class="stat-value" id="sentiment">--</span>
-                        </div>
-                        <div class="stat-row">
-                            <span class="stat-label">Confidence</span>
-                            <div class="confidence-bar">
-                                <div class="confidence-fill" id="confidenceFill"></div>
-                                <span class="confidence-value" id="confidenceValue">--</span>
+                        <h3>No tickets yet</h3>
+                        <p>Create your first support ticket to get started</p>
+                        <button class="btn btn-primary" id="emptyCreateBtn">Create Ticket</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Create Ticket View -->
+            <section class="view view-create" id="viewCreate">
+                <header class="view-header">
+                    <button class="btn-back" id="backFromCreate">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="19" y1="12" x2="5" y2="12"></line>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
+                    </button>
+                    <div class="view-title">
+                        <h1>Create New Ticket</h1>
+                        <span class="view-subtitle">Submit a support request</span>
+                    </div>
+                </header>
+                
+                <div class="create-container">
+                    <form class="ticket-form" id="ticketForm">
+                        <div class="form-section">
+                            <h3>Contact Information</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="customerName">Your Name</label>
+                                    <input type="text" id="customerName" placeholder="John Doe" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="customerEmail">Email Address</label>
+                                    <input type="email" id="customerEmail" placeholder="john@company.com" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="accountTier">Account Tier</label>
+                                    <select id="accountTier" required>
+                                        <option value="">Select tier...</option>
+                                        <option value="enterprise">Enterprise</option>
+                                        <option value="professional">Professional</option>
+                                        <option value="starter">Starter</option>
+                                        <option value="free">Free</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="product">Product</label>
+                                    <input type="text" id="product" placeholder="API Platform" required>
+                                </div>
                             </div>
                         </div>
-                        <div class="rationale" id="rationale">--</div>
-                    </div>
-                </div>
-
-                <!-- Routing Card -->
-                <div class="result-card routing-card">
-                    <div class="card-header">
-                        <h3>Routing</h3>
-                        <div class="escalation-badge" id="escalationBadge">--</div>
-                    </div>
-                    <div class="card-content">
-                        <div class="stat-row">
-                            <span class="stat-label">Team</span>
-                            <span class="stat-value team-value" id="team">--</span>
+                        
+                        <div class="form-section">
+                            <h3>Issue Details</h3>
+                            <div class="form-group">
+                                <label for="subject">Subject</label>
+                                <input type="text" id="subject" placeholder="Brief description of your issue" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="body">Description</label>
+                                <textarea id="body" rows="8" placeholder="Please describe your issue in detail. Include any error messages, steps to reproduce, and the impact on your work." required></textarea>
+                            </div>
                         </div>
-                        <div class="stat-row">
-                            <span class="stat-label">SLA</span>
-                            <span class="stat-value" id="sla">--</span>
+                        
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="cancelCreate">Cancel</button>
+                            <button type="submit" class="btn btn-primary" id="submitTicket">
+                                <span class="btn-text">Submit Ticket</span>
+                                <span class="btn-spinner"></span>
+                            </button>
                         </div>
-                        <div class="reasoning" id="reasoning">--</div>
-                    </div>
+                    </form>
+                    
+                    <!-- KB Suggestions Panel -->
+                    <aside class="kb-suggestions" id="kbSuggestions">
+                        <div class="suggestions-header">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                            </svg>
+                            <h4>Related Articles</h4>
+                        </div>
+                        <div class="suggestions-content" id="suggestionsContent">
+                            <p class="suggestions-hint">Start typing your issue to see related help articles and known issues.</p>
+                        </div>
+                    </aside>
                 </div>
+            </section>
 
-                <!-- Guardrail Card -->
-                <div class="result-card guardrail-card">
-                    <div class="card-header">
-                        <h3>Guardrail</h3>
-                        <div class="guardrail-badge" id="guardrailBadge">--</div>
+            <!-- Ticket Detail / Agent View -->
+            <section class="view view-detail" id="viewDetail">
+                <header class="view-header">
+                    <button class="btn-back" id="backFromDetail">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="19" y1="12" x2="5" y2="12"></line>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
+                    </button>
+                    <div class="view-title">
+                        <h1 id="detailTicketId">Ticket Details</h1>
+                        <span class="view-subtitle" id="detailSubject">Loading...</span>
                     </div>
-                    <div class="card-content">
-                        <div class="issues-list" id="issuesList">
-                            <p class="no-issues">No issues detected</p>
+                </header>
+                
+                <div class="detail-container">
+                    <!-- Ticket Info Panel -->
+                    <div class="ticket-panel">
+                        <div class="ticket-meta">
+                            <div class="meta-badges">
+                                <span class="badge badge-urgency" id="detailUrgency">--</span>
+                                <span class="badge badge-category" id="detailCategory">--</span>
+                                <span class="badge badge-sentiment" id="detailSentiment">--</span>
+                            </div>
+                            <div class="meta-info">
+                                <div class="meta-item">
+                                    <span class="meta-label">Customer</span>
+                                    <span class="meta-value" id="detailCustomer">--</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-label">Account</span>
+                                    <span class="meta-value" id="detailAccount">--</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-label">Assigned To</span>
+                                    <span class="meta-value" id="detailTeam">--</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-label">SLA</span>
+                                    <span class="meta-value" id="detailSla">--</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="ticket-conversation">
+                            <div class="conversation-item customer-message">
+                                <div class="message-header">
+                                    <div class="avatar customer-avatar" id="detailAvatar">--</div>
+                                    <div class="message-meta">
+                                        <span class="sender-name" id="detailSenderName">Customer</span>
+                                        <span class="message-time" id="detailTime">--</span>
+                                    </div>
+                                </div>
+                                <div class="message-content">
+                                    <div class="message-subject" id="detailMessageSubject">--</div>
+                                    <div class="message-body" id="detailMessageBody">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Extracted Fields -->
+                        <div class="extracted-fields" id="extractedFields">
+                            <h4>Extracted Information</h4>
+                            <div class="fields-grid" id="detailFieldsGrid">
+                                <!-- Populated by JS -->
+                            </div>
                         </div>
                     </div>
+                    
+                    <!-- Agent Tools Panel -->
+                    <aside class="agent-panel">
+                        <div class="panel-tabs">
+                            <button class="panel-tab active" data-panel="kb">Knowledge Base</button>
+                            <button class="panel-tab" data-panel="reply">Draft Reply</button>
+                            <button class="panel-tab" data-panel="notes">Internal Notes</button>
+                        </div>
+                        
+                        <!-- KB Panel -->
+                        <div class="panel-content panel-kb active" id="panelKb">
+                            <div class="kb-header">
+                                <h4>Related Articles & Known Issues</h4>
+                            </div>
+                            <div class="kb-results" id="kbResults">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                        
+                        <!-- Reply Panel -->
+                        <div class="panel-content panel-reply" id="panelReply">
+                            <div class="reply-header">
+                                <h4>Suggested Response</h4>
+                                <div class="guardrail-status" id="guardrailStatus">
+                                    <span class="guardrail-icon"></span>
+                                    <span class="guardrail-text">--</span>
+                                </div>
+                            </div>
+                            <div class="reply-content" id="replyContent">
+                                <p class="reply-placeholder">Processing ticket...</p>
+                            </div>
+                            <div class="reply-actions">
+                                <button class="btn btn-secondary" id="copyReply">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                    Copy Reply
+                                </button>
+                                <button class="btn btn-primary" id="sendReply">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                    </svg>
+                                    Send Reply
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Notes Panel -->
+                        <div class="panel-content panel-notes" id="panelNotes">
+                            <div class="notes-header">
+                                <h4>Internal Notes</h4>
+                            </div>
+                            <div class="notes-content" id="notesContent">
+                                <p class="notes-placeholder">No internal notes yet.</p>
+                            </div>
+                        </div>
+                    </aside>
                 </div>
-            </div>
+            </section>
 
-            <!-- Extracted Fields -->
-            <div class="result-card full-width">
-                <div class="card-header collapsible" data-target="extractedContent">
-                    <h3>Extracted Fields</h3>
-                    <span class="collapse-icon">-</span>
-                </div>
-                <div class="card-content" id="extractedContent">
-                    <div class="fields-grid" id="fieldsGrid">
-                        <!-- Populated by JS -->
+            <!-- Knowledge Base View -->
+            <section class="view view-kb" id="viewKb">
+                <header class="view-header">
+                    <div class="view-title">
+                        <h1>Knowledge Base</h1>
+                        <span class="view-subtitle">Search help articles and documentation</span>
                     </div>
-                    <div class="missing-fields" id="missingFields">
-                        <span class="missing-label">Missing:</span>
-                        <span class="missing-list">--</span>
+                </header>
+                
+                <div class="kb-search-container">
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="kbSearchInput" placeholder="Search knowledge base...">
+                    </div>
+                    <div class="kb-search-results" id="kbSearchResults">
+                        <p class="search-hint">Enter a search term to find relevant articles</p>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <!-- KB Citations -->
-            <div class="result-card full-width">
-                <div class="card-header collapsible" data-target="kbContent">
-                    <h3>KB Citations</h3>
-                    <span class="collapse-icon">-</span>
-                </div>
-                <div class="card-content" id="kbContent">
-                    <div class="citations-list" id="citationsList">
-                        <!-- Populated by JS -->
+            <!-- Admin View -->
+            <section class="view view-admin" id="viewAdmin">
+                <header class="view-header">
+                    <div class="view-title">
+                        <h1>Admin Panel</h1>
+                        <span class="view-subtitle">Add known issues and remediation to the knowledge base</span>
                     </div>
+                </header>
+                
+                <div class="admin-container">
+                    <form class="admin-form" id="knownIssueForm">
+                        <div class="form-section">
+                            <h3>Issue Details</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="issueId">Issue ID</label>
+                                    <input type="text" id="issueId" placeholder="e.g. API-2024-004" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="issueTitle">Title</label>
+                                    <input type="text" id="issueTitle" placeholder="Brief title of the issue" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="issueStatus">Status</label>
+                                    <select id="issueStatus" required>
+                                        <option value="">Select status...</option>
+                                        <option value="Investigating">Investigating</option>
+                                        <option value="In Progress">In Progress</option>
+                                        <option value="Monitoring">Monitoring</option>
+                                        <option value="Resolved">Resolved</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="issueSeverity">Severity</label>
+                                    <select id="issueSeverity" required>
+                                        <option value="">Select severity...</option>
+                                        <option value="Critical">Critical</option>
+                                        <option value="High">High</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="Low">Low</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="issueAffected">Affected Tiers</label>
+                                    <input type="text" id="issueAffected" placeholder="e.g. All tiers, Enterprise only" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="issueExpectedResolution">Expected Resolution</label>
+                                    <input type="date" id="issueExpectedResolution">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h3>Description & Remediation</h3>
+                            <div class="form-group">
+                                <label for="issueDescription">Description</label>
+                                <textarea id="issueDescription" rows="4" placeholder="Describe the issue in detail..." required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="issueWorkaround">Workaround / Remediation Steps</label>
+                                <textarea id="issueWorkaround" rows="6" placeholder="Enter workaround steps (one per line, will be formatted as bullet points)..." required></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="clearIssueForm">Clear Form</button>
+                            <button type="submit" class="btn btn-primary" id="submitIssue">
+                                <span class="btn-text">Add to Knowledge Base</span>
+                                <span class="btn-spinner"></span>
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <aside class="admin-info-panel">
+                        <div class="info-card">
+                            <h4>Adding Known Issues</h4>
+                            <p>Use this form to add new known issues to the knowledge base. The issue will be:</p>
+                            <ul>
+                                <li>Appended to the Known Issues document</li>
+                                <li>Indexed for search and retrieval</li>
+                                <li>Available for AI-assisted ticket replies</li>
+                            </ul>
+                        </div>
+                        <div class="info-card">
+                            <h4>Severity Guidelines</h4>
+                            <ul class="severity-list">
+                                <li><span class="severity-badge critical">Critical</span> Service unusable, no workaround</li>
+                                <li><span class="severity-badge high">High</span> Major feature broken, limited workaround</li>
+                                <li><span class="severity-badge medium">Medium</span> Feature impaired, workaround available</li>
+                                <li><span class="severity-badge low">Low</span> Minor inconvenience, cosmetic issues</li>
+                            </ul>
+                        </div>
+                    </aside>
                 </div>
-            </div>
+            </section>
+        </main>
+    </div>
 
-            <!-- Customer Reply -->
-            <div class="result-card full-width reply-card">
-                <div class="card-header collapsible" data-target="replyContent">
-                    <h3>Customer Reply</h3>
-                    <button class="btn btn-copy" id="copyReplyBtn">Copy</button>
-                </div>
-                <div class="card-content" id="replyContent">
-                    <div class="reply-text" id="replyText">--</div>
-                </div>
-            </div>
-
-            <!-- Internal Notes -->
-            <div class="result-card full-width notes-card">
-                <div class="card-header collapsible" data-target="notesContent">
-                    <h3>Internal Notes</h3>
-                </div>
-                <div class="card-content" id="notesContent">
-                    <div class="notes-text" id="notesText">--</div>
-                </div>
-            </div>
-
-            <!-- Raw JSON -->
-            <div class="result-card full-width json-card">
-                <div class="card-header collapsible collapsed" data-target="jsonContent">
-                    <h3>Raw JSON</h3>
-                    <span class="collapse-icon">+</span>
-                </div>
-                <div class="card-content collapsed" id="jsonContent">
-                    <pre class="json-output" id="jsonOutput"></pre>
-                </div>
-            </div>
-        </section>
-
-        <footer class="footer">
-            <p>Support Triage System v1.0 | Processing in <span id="footerMode">--</span> mode</p>
-        </footer>
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <span class="toast-message"></span>
     </div>
 
     <script src="/app.js"></script>
 </body>
 </html>
-

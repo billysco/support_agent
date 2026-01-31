@@ -1,5 +1,5 @@
 """
-Utility functions for logging, redaction, and formatting.
+Utility functions for logging and redaction.
 """
 
 import re
@@ -67,32 +67,4 @@ def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
     if len(text) <= max_length:
         return text
     return text[:max_length - len(suffix)] + suffix
-
-
-def format_urgency_badge(urgency: str) -> str:
-    """Format urgency as a colored badge for terminal output."""
-    colors = {
-        "P0": "\033[91m",  # Red
-        "P1": "\033[93m",  # Yellow
-        "P2": "\033[94m",  # Blue
-        "P3": "\033[92m",  # Green
-    }
-    reset = "\033[0m"
-    color = colors.get(urgency, "")
-    return f"{color}[{urgency}]{reset}"
-
-
-def format_team_badge(team: str) -> str:
-    """Format team name as a badge."""
-    return f"[{team.upper()}]"
-
-
-def print_separator(char: str = "=", length: int = 70):
-    """Print a separator line."""
-    print(char * length)
-
-
-def print_section_header(title: str, char: str = "-", length: int = 70):
-    """Print a section header."""
-    print(f"\n{char * 3} {title} {char * (length - len(title) - 5)}")
 

@@ -27,3 +27,7 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# ChromaDB data
+data/chroma_db/
+data/ticket_history/

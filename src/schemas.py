@@ -120,6 +120,14 @@ class GuardrailStatus(BaseModel):
     fixes_applied: list[str] = Field(default_factory=list, description="List of fixes that were applied")
 
 
+class AutoReplyInfo(BaseModel):
+    """Information about auto-reply decision."""
+    is_auto_reply: bool = Field(default=False, description="Whether this reply was auto-generated from similar ticket")
+    similarity_score: float = Field(default=0.0, description="Similarity score with matched ticket (0-1)")
+    matched_ticket_id: Optional[str] = Field(default=None, description="ID of the similar ticket that triggered auto-reply")
+    time_since_match_hours: Optional[float] = Field(default=None, description="Hours since the matched ticket was processed")
+
+
 class PipelineResult(BaseModel):
     """Complete output from the support triage pipeline."""
     ticket_id: str = Field(..., description="Original ticket ID")
@@ -130,4 +138,5 @@ class PipelineResult(BaseModel):
     reply: ReplyDraft = Field(..., description="Draft reply for customer")
     guardrail_status: GuardrailStatus = Field(..., description="Guardrail check results")
     processing_mode: str = Field(default="mock", description="Whether processed in 'real' or 'mock' mode")
+    auto_reply: AutoReplyInfo = Field(default_factory=AutoReplyInfo, description="Auto-reply information")
 

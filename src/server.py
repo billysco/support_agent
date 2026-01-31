@@ -7,6 +7,9 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file
+
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -15,6 +18,7 @@ from pydantic import ValidationError
 from .schemas import SupportTicket, PipelineResult, AccountTier
 from .llm_client import get_llm_client
 from .kb.retriever import get_retriever
+from .kb.ticket_history import get_ticket_history
 from .demo import process_ticket
 
 
@@ -41,6 +45,7 @@ app = FastAPI(
 # Global instances (lazy loaded)
 _llm = None
 _retriever = None
+_ticket_history = None
 
 
 def get_llm():
@@ -56,6 +61,14 @@ def get_kb_retriever():
         llm = get_llm()
         _retriever = get_retriever(use_mock=llm.is_mock)
     return _retriever
+
+
+def get_history():
+    global _ticket_history
+    if _ticket_history is None:
+        llm = get_llm()
+        _ticket_history = get_ticket_history(use_mock=llm.is_mock)
+    return _ticket_history
 
 
 # API Routes
@@ -107,10 +120,48 @@ async def process_ticket_api(ticket_data: dict):
     try:
         llm = get_llm()
         retriever = get_kb_retriever()
-        result = process_ticket(ticket, llm, retriever)
+        ticket_history = get_history()
+        result = process_ticket(ticket, llm, retriever, ticket_history)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
+
+
+@app.get("/api/ticket-history/stats")
+async def get_ticket_history_stats():
+    """Get statistics about the ticket history store."""
+    try:
+        history = get_history()
+        return history.get_stats()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@app.post("/api/kb/search")
+async def search_kb(search_data: dict):
+    """Search the knowledge base for relevant articles."""
+    query = search_data.get("query", "")
+    k = search_data.get("k", 5)
+    
+    if not query or len(query) < 3:
+        return []
+    
+    try:
+        retriever = get_kb_retriever()
+        results = retriever.search(query, k=k)
+        
+        # Convert to dict for JSON response
+        return [
+            {
+                "doc_name": hit.doc_name,
+                "section": hit.section,
+                "passage": hit.passage,
+                "relevance_score": hit.relevance_score
+            }
+            for hit in results
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 
 # Static file serving
@@ -167,5 +218,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8000):
 
 
 if __name__ == "__main__":
-    run_server()
+    import sys
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    run_server(port=port)
 

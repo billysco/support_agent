@@ -3,7 +3,7 @@ Ticket history storage and similarity search for auto-reply functionality.
 Stores processed tickets and enables finding similar past tickets.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 import json
 import os
@@ -23,8 +23,7 @@ class TicketHistoryStore:
         self,
         persist_dir: str | Path | None = None,
         use_mock: bool | None = None,
-        similarity_threshold: float = 0.8,
-        time_window_hours: int = 12
+        similarity_threshold: float = 0.8
     ):
         """
         Initialize the ticket history store.
@@ -33,14 +32,12 @@ class TicketHistoryStore:
             persist_dir: Path to ChromaDB persistence directory
             use_mock: Use mock embeddings
             similarity_threshold: Minimum similarity score for auto-reply (default 0.8)
-            time_window_hours: Time window in hours for auto-reply eligibility (default 12)
         """
         base_path = Path(persist_dir) if persist_dir else get_chroma_path()
         self.persist_dir = base_path.parent / "ticket_history"
         self.persist_dir.mkdir(parents=True, exist_ok=True)
 
         self.similarity_threshold = similarity_threshold
-        self.time_window_hours = time_window_hours
 
         # Auto-detect mock mode if not specified
         if use_mock is None:
@@ -96,7 +93,7 @@ class TicketHistoryStore:
         ticket: SupportTicket
     ) -> tuple[bool, float, ReplyDraft | None, dict | None]:
         """
-        Find a similar ticket within the time window.
+        Find a similar ticket based on similarity score.
 
         Args:
             ticket: The new ticket to find matches for
@@ -114,9 +111,6 @@ class TicketHistoryStore:
         if not results:
             return False, 0.0, None, None
 
-        now = datetime.now()
-        cutoff_time = now - timedelta(hours=self.time_window_hours)
-
         for doc, score in results:
             # Skip if below similarity threshold
             if score < self.similarity_threshold:
@@ -126,14 +120,8 @@ class TicketHistoryStore:
             if doc.metadata.get("ticket_id") == ticket.ticket_id:
                 continue
 
-            # Check if within time window
-            processed_at_str = doc.metadata.get("processed_at")
-            if processed_at_str:
-                processed_at = datetime.fromisoformat(processed_at_str)
-                if processed_at < cutoff_time:
-                    continue
-
             # Found a match - create reply draft from stored data
+            processed_at_str = doc.metadata.get("processed_at")
             citations = json.loads(doc.metadata.get("citations", "[]"))
             reply = ReplyDraft(
                 customer_reply=doc.metadata.get("customer_reply", ""),
@@ -160,8 +148,7 @@ class TicketHistoryStore:
         count = collection.count()
         return {
             "total_tickets": count,
-            "similarity_threshold": self.similarity_threshold,
-            "time_window_hours": self.time_window_hours
+            "similarity_threshold": self.similarity_threshold
         }
 
 

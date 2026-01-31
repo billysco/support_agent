@@ -67,15 +67,25 @@ const elements = {
     
     // Agent panel
     panelTabs: document.querySelectorAll('.panel-tab'),
+    panelReasoning: document.getElementById('panelReasoning'),
     panelKb: document.getElementById('panelKb'),
     panelReply: document.getElementById('panelReply'),
     panelNotes: document.getElementById('panelNotes'),
+    reasoningStages: document.getElementById('reasoningStages'),
     kbResults: document.getElementById('kbResults'),
     replyContent: document.getElementById('replyContent'),
     notesContent: document.getElementById('notesContent'),
     guardrailStatus: document.getElementById('guardrailStatus'),
     copyReply: document.getElementById('copyReply'),
     sendReply: document.getElementById('sendReply'),
+
+    // Citation modal
+    citationModal: document.getElementById('citationModal'),
+    citationModalTitle: document.getElementById('citationModalTitle'),
+    citationModalClose: document.getElementById('citationModalClose'),
+    citationSourceLabel: document.getElementById('citationSourceLabel'),
+    citationPassage: document.getElementById('citationPassage'),
+    citationRelevance: document.getElementById('citationRelevance'),
     
     // KB view
     kbSearchInput: document.getElementById('kbSearchInput'),
@@ -380,7 +390,7 @@ async function handleSubmitTicket(e) {
 // Detail View
 function initDetailView() {
     elements.backFromDetail.addEventListener('click', () => switchView('tickets'));
-    
+
     // Panel tabs
     elements.panelTabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -388,22 +398,31 @@ function initDetailView() {
             switchPanel(panel);
         });
     });
-    
+
     // Reply actions
     elements.copyReply.addEventListener('click', copyReplyToClipboard);
     elements.sendReply.addEventListener('click', handleSendReply);
+
+    // Citation modal
+    elements.citationModalClose.addEventListener('click', closeCitationModal);
+    elements.citationModal.addEventListener('click', (e) => {
+        if (e.target === elements.citationModal) closeCitationModal();
+    });
 }
 
 function switchPanel(panelName) {
     elements.panelTabs.forEach(tab => {
         tab.classList.toggle('active', tab.dataset.panel === panelName);
     });
-    
+
     document.querySelectorAll('.panel-content').forEach(panel => {
         panel.classList.remove('active');
     });
-    
+
     switch (panelName) {
+        case 'reasoning':
+            elements.panelReasoning.classList.add('active');
+            break;
         case 'kb':
             elements.panelKb.classList.add('active');
             break;
@@ -494,13 +513,16 @@ function displayTicketDetail() {
     
     // Extracted fields
     displayExtractedFields(result.extracted_fields);
-    
+
+    // Chain of thought (AI Reasoning)
+    displayChainOfThought(ticket, result);
+
     // KB results
     displayKbResults(result.kb_hits);
-    
-    // Reply
+
+    // Reply with citation highlighting
     displayReply(result);
-    
+
     // Notes
     displayNotes(result);
 }
@@ -539,7 +561,7 @@ function displayKbResults(kbHits) {
         elements.kbResults.innerHTML = '<p class="suggestions-hint">No related knowledge base articles found.</p>';
         return;
     }
-    
+
     elements.kbResults.innerHTML = kbHits.slice(0, 5).map(hit => `
         <div class="kb-item">
             <div class="kb-item-source">[KB:${escapeHtml(hit.doc_name)}#${escapeHtml(hit.section)}]</div>
@@ -549,18 +571,182 @@ function displayKbResults(kbHits) {
     `).join('');
 }
 
+function displayChainOfThought(ticket, result) {
+    const stages = [];
+
+    // Stage 1: Input Guardrails
+    const inputGuardrail = result.input_guardrail_status;
+    if (inputGuardrail) {
+        const riskColors = { low: '#10b981', medium: '#f0b429', high: '#e67e22', critical: '#d64545' };
+        const riskColor = riskColors[inputGuardrail.risk_level] || '#6b6b6b';
+        stages.push({
+            title: 'Input Security Check',
+            icon: inputGuardrail.passed ? '✓' : (inputGuardrail.blocked ? '✕' : '⚠'),
+            status: inputGuardrail.blocked ? 'blocked' : (inputGuardrail.passed ? 'passed' : 'warning'),
+            items: [
+                { label: 'Security scan', value: inputGuardrail.passed ? 'Passed' : 'Flagged' },
+                { label: 'Risk level', value: `<span style="color: ${riskColor}; font-weight: 600;">${(inputGuardrail.risk_level || 'low').toUpperCase()}</span>` },
+                ...(inputGuardrail.issues_found?.length > 0 ? [{ label: 'Issues detected', value: inputGuardrail.issues_found.join(', ') }] : [])
+            ]
+        });
+    }
+
+    // Stage 2: Triage Analysis
+    const triage = result.triage;
+    const urgencyColors = { P0: '#d64545', P1: '#e67e22', P2: '#f0b429', P3: '#7d9f80' };
+    const sentimentColors = { negative: '#d64545', neutral: '#6b6b6b', positive: '#10b981' };
+
+    // Extract keywords from ticket for display
+    const keywords = extractKeywords(ticket.subject + ' ' + ticket.body);
+
+    stages.push({
+        title: 'Triage Analysis',
+        icon: '🔍',
+        status: 'passed',
+        items: [
+            { label: 'Detected keywords', value: keywords.slice(0, 5).map(k => `<span class="cot-keyword">${k}</span>`).join(' ') },
+            { label: 'Customer sentiment', value: `<span style="color: ${sentimentColors[triage.sentiment]};">${capitalizeFirst(triage.sentiment)}</span> (${(triage.confidence * 100).toFixed(0)}% confidence)` },
+            { label: 'Category match', value: `<span class="cot-category">${triage.category}</span>` },
+            { label: 'Urgency decision', value: `<span style="color: ${urgencyColors[triage.urgency]}; font-weight: 700;">${triage.urgency}</span>` },
+            { label: 'Rationale', value: `<em>"${truncate(triage.rationale, 150)}"</em>` }
+        ]
+    });
+
+    // Stage 3: Auto-Reply Check
+    const autoReply = result.auto_reply;
+    if (autoReply) {
+        stages.push({
+            title: 'Similarity Check',
+            icon: autoReply.is_auto_reply ? '⚡' : '🔄',
+            status: autoReply.is_auto_reply ? 'auto' : 'passed',
+            items: [
+                { label: 'Best match score', value: `${(autoReply.similarity_score * 100).toFixed(1)}%` },
+                { label: 'Threshold', value: '80%' },
+                ...(autoReply.is_auto_reply ? [
+                    { label: 'Matched ticket', value: `<strong>${autoReply.matched_ticket_id}</strong>` },
+                    { label: 'Decision', value: '<span style="color: #10b981; font-weight: 600;">AUTO-REPLY TRIGGERED</span>' }
+                ] : [
+                    { label: 'Decision', value: 'Generate new response' }
+                ])
+            ]
+        });
+    }
+
+    // Stage 4: KB Retrieval
+    const kbHits = result.kb_hits || [];
+    const topHit = kbHits[0];
+    stages.push({
+        title: 'Knowledge Base Search',
+        icon: '📚',
+        status: kbHits.length > 0 ? 'passed' : 'warning',
+        items: [
+            { label: 'Search query', value: `<code>${truncate(ticket.subject, 50)}</code>` },
+            { label: 'Results found', value: `${kbHits.length} articles` },
+            ...(topHit ? [
+                { label: 'Top match', value: `[KB:${topHit.doc_name}#${topHit.section}]` },
+                { label: 'Top relevance', value: `<strong>${(topHit.relevance_score * 100).toFixed(0)}%</strong>` }
+            ] : [])
+        ]
+    });
+
+    // Stage 5: Routing Decision
+    const routing = result.routing;
+    stages.push({
+        title: 'Routing Decision',
+        icon: '🎯',
+        status: routing.escalation ? 'warning' : 'passed',
+        items: [
+            { label: 'Assigned team', value: `<strong>${capitalizeFirst(routing.team)}</strong>` },
+            { label: 'SLA target', value: formatSla(routing.sla_hours) },
+            { label: 'Escalation', value: routing.escalation ? '<span style="color: #d64545; font-weight: 600;">YES - ESCALATED</span>' : 'No' },
+            { label: 'Reasoning', value: `<em>"${truncate(routing.reasoning, 120)}"</em>` }
+        ]
+    });
+
+    // Stage 6: Response Generation
+    const citations = result.reply.citations || [];
+    stages.push({
+        title: 'Response Generation',
+        icon: '✍️',
+        status: 'passed',
+        items: [
+            { label: 'KB citations used', value: citations.length > 0 ? citations.slice(0, 3).join(', ') : 'None' },
+            { label: 'Response length', value: `${result.reply.customer_reply.length} characters` }
+        ]
+    });
+
+    // Stage 7: Output Guardrails
+    const outputGuardrail = result.guardrail_status;
+    stages.push({
+        title: 'Output Validation',
+        icon: outputGuardrail.passed ? '✓' : '⚠',
+        status: outputGuardrail.passed ? 'passed' : 'warning',
+        items: [
+            { label: 'Hallucination check', value: outputGuardrail.passed ? 'Passed' : 'Review needed' },
+            { label: 'Policy compliance', value: outputGuardrail.passed ? 'Passed' : 'Issues found' },
+            ...(outputGuardrail.issues_found?.length > 0 ? [{ label: 'Issues', value: outputGuardrail.issues_found.join(', ') }] : []),
+            ...(outputGuardrail.fixes_applied?.length > 0 ? [{ label: 'Fixes applied', value: outputGuardrail.fixes_applied.join(', ') }] : [])
+        ]
+    });
+
+    // Render stages
+    elements.reasoningStages.innerHTML = stages.map((stage, index) => `
+        <div class="cot-stage ${stage.status}" data-stage="${index}">
+            <div class="cot-stage-header" onclick="toggleCotStage(${index})">
+                <span class="cot-stage-icon">${stage.icon}</span>
+                <span class="cot-stage-title">${stage.title}</span>
+                <span class="cot-stage-toggle">▼</span>
+            </div>
+            <div class="cot-stage-content">
+                ${stage.items.map(item => `
+                    <div class="cot-item">
+                        <span class="cot-item-label">→ ${item.label}:</span>
+                        <span class="cot-item-value">${item.value}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+function toggleCotStage(index) {
+    const stage = document.querySelector(`.cot-stage[data-stage="${index}"]`);
+    if (stage) {
+        stage.classList.toggle('collapsed');
+    }
+}
+
+function extractKeywords(text) {
+    // Simple keyword extraction - find important words
+    const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'and', 'but', 'if', 'or', 'because', 'until', 'while', 'this', 'that', 'these', 'those', 'am', 'i', 'we', 'you', 'he', 'she', 'it', 'they', 'my', 'our', 'your', 'his', 'her', 'its', 'their', 'what', 'which', 'who', 'whom', 'please', 'hi', 'hello', 'thanks', 'thank', 'dear', 'sincerely', 'regards']);
+
+    const words = text.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !stopWords.has(word));
+
+    // Count frequency and return top words
+    const freq = {};
+    words.forEach(word => { freq[word] = (freq[word] || 0) + 1; });
+
+    return Object.entries(freq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([word]) => word);
+}
+
 function displayReply(result) {
     const outputGuardrail = result.guardrail_status;
     const inputGuardrail = result.input_guardrail_status;
-    
+
     // Determine overall guardrail status
     const inputPassed = !inputGuardrail || inputGuardrail.passed;
     const outputPassed = outputGuardrail.passed;
     const blocked = inputGuardrail?.blocked;
-    
+
     let statusClass = 'passed';
     let statusText = 'Approved';
-    
+
     if (blocked) {
         statusClass = 'blocked';
         statusText = 'Blocked';
@@ -568,11 +754,56 @@ function displayReply(result) {
         statusClass = 'failed';
         statusText = 'Review Required';
     }
-    
+
     elements.guardrailStatus.className = `guardrail-status ${statusClass}`;
     elements.guardrailStatus.querySelector('.guardrail-text').textContent = statusText;
-    
-    elements.replyContent.textContent = result.reply.customer_reply;
+
+    // Display reply with citation highlighting
+    const replyText = result.reply.customer_reply;
+    elements.replyContent.innerHTML = highlightCitations(replyText, result.kb_hits);
+}
+
+function highlightCitations(text, kbHits) {
+    // Parse and highlight [KB:doc#section] citations
+    const citationRegex = /\[KB:([^\]]+)\]/g;
+
+    return escapeHtml(text).replace(citationRegex, (match, citation) => {
+        // Find matching KB hit
+        const [docName, section] = citation.split('#');
+        const hit = kbHits?.find(h =>
+            h.doc_name === docName && (section ? h.section === section : true)
+        );
+
+        if (hit) {
+            const relevance = (hit.relevance_score * 100).toFixed(0);
+            return `<span class="citation-link" data-doc="${escapeHtml(docName)}" data-section="${escapeHtml(section || '')}" data-relevance="${relevance}" onclick="showCitationSource(this)">[KB:${escapeHtml(citation)}]</span>`;
+        }
+        return `<span class="citation-link citation-unmatched">[KB:${escapeHtml(citation)}]</span>`;
+    });
+}
+
+function showCitationSource(element) {
+    const docName = element.dataset.doc;
+    const section = element.dataset.section;
+    const relevance = element.dataset.relevance;
+
+    // Find the KB hit
+    const result = state.currentResult;
+    const hit = result?.kb_hits?.find(h =>
+        h.doc_name === docName && (section ? h.section === section : true)
+    );
+
+    if (hit) {
+        elements.citationModalTitle.textContent = `Knowledge Base Source`;
+        elements.citationSourceLabel.textContent = `[KB:${hit.doc_name}#${hit.section}]`;
+        elements.citationPassage.textContent = hit.passage;
+        elements.citationRelevance.innerHTML = `<strong>Relevance Score:</strong> ${relevance}%`;
+        elements.citationModal.classList.add('visible');
+    }
+}
+
+function closeCitationModal() {
+    elements.citationModal.classList.remove('visible');
 }
 
 function displayNotes(result) {

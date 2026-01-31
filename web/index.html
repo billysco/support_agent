@@ -261,13 +261,25 @@
                     <!-- Agent Tools Panel -->
                     <aside class="agent-panel">
                         <div class="panel-tabs">
-                            <button class="panel-tab active" data-panel="kb">Knowledge Base</button>
+                            <button class="panel-tab active" data-panel="reasoning">AI Reasoning</button>
+                            <button class="panel-tab" data-panel="kb">Knowledge Base</button>
                             <button class="panel-tab" data-panel="reply">Draft Reply</button>
                             <button class="panel-tab" data-panel="notes">Internal Notes</button>
                         </div>
                         
+                        <!-- AI Reasoning Panel -->
+                        <div class="panel-content panel-reasoning active" id="panelReasoning">
+                            <div class="reasoning-header">
+                                <h4>Chain of Thought</h4>
+                                <span class="reasoning-subtitle">AI decision process for this ticket</span>
+                            </div>
+                            <div class="reasoning-stages" id="reasoningStages">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+
                         <!-- KB Panel -->
-                        <div class="panel-content panel-kb active" id="panelKb">
+                        <div class="panel-content panel-kb" id="panelKb">
                             <div class="kb-header">
                                 <h4>Related Articles & Known Issues</h4>
                             </div>
@@ -448,6 +460,21 @@
     <!-- Toast Notification -->
     <div class="toast" id="toast">
         <span class="toast-message"></span>
+    </div>
+
+    <!-- Citation Source Modal -->
+    <div class="citation-modal" id="citationModal">
+        <div class="citation-modal-content">
+            <div class="citation-modal-header">
+                <span class="citation-modal-title" id="citationModalTitle">KB Source</span>
+                <button class="citation-modal-close" id="citationModalClose">&times;</button>
+            </div>
+            <div class="citation-modal-body">
+                <div class="citation-source-label" id="citationSourceLabel"></div>
+                <div class="citation-passage" id="citationPassage"></div>
+                <div class="citation-relevance" id="citationRelevance"></div>
+            </div>
+        </div>
     </div>
 
     <script src="/app.js"></script>

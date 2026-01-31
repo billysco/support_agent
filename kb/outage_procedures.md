@@ -99,3 +99,4 @@ This document defines our incident response procedures for service outages and d
 - P1 lasting >4 hours: 5% monthly credit
 - Credits applied automatically to next invoice
 
+

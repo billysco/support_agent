@@ -247,6 +247,38 @@
                                     <div class="message-body" id="detailMessageBody">--</div>
                                 </div>
                             </div>
+                            
+                            <!-- Agent Response (shown when reply is sent) -->
+                            <div class="conversation-item agent-response" id="agentResponseItem" style="display: none;">
+                                <div class="message-header">
+                                    <div class="avatar agent-avatar">AI</div>
+                                    <div class="message-meta">
+                                        <span class="sender-name">Support Agent</span>
+                                        <span class="message-time" id="agentResponseTime">Just now</span>
+                                        <span class="auto-sent-badge" id="autoSentBadge">Auto-sent</span>
+                                    </div>
+                                </div>
+                                <div class="message-content">
+                                    <div class="message-body" id="agentResponseBody">--</div>
+                                </div>
+                            </div>
+
+                            <!-- Follow-up messages container -->
+                            <div id="followUpMessages"></div>
+
+                            <!-- Customer Reply Input -->
+                            <div class="conversation-reply-box" id="replyBox">
+                                <div class="reply-input-wrapper">
+                                    <textarea id="customerReplyInput" placeholder="Type your reply..." rows="3"></textarea>
+                                    <button class="btn btn-primary reply-send-btn" id="sendCustomerReply">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                        </svg>
+                                        Send
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         
                         <!-- Extracted Fields -->

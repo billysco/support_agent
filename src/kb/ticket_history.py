@@ -126,7 +126,8 @@ class TicketHistoryStore:
             reply = ReplyDraft(
                 customer_reply=doc.metadata.get("customer_reply", ""),
                 internal_notes=doc.metadata.get("internal_notes", ""),
-                citations=citations
+                citations=citations,
+                should_send=True  # Auto-replies should be sent
             )
 
             matched_info = {

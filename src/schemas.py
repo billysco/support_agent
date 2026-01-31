@@ -111,6 +111,8 @@ class ReplyDraft(BaseModel):
     customer_reply: str = Field(..., description="Customer-facing reply text")
     internal_notes: str = Field(..., description="Internal notes for the support agent")
     citations: list[str] = Field(default_factory=list, description="KB citations used in the reply")
+    should_send: bool = Field(default=True, description="Whether this reply should be sent automatically to the ticket")
+    suggested_draft: Optional[str] = Field(default=None, description="Suggested draft reply for agent review when KB hits not found")
 
 
 class GuardrailStatus(BaseModel):

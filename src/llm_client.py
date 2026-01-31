@@ -289,7 +289,7 @@ class MockProvider(LLMProvider):
         
         # Generate reply based on category
         if triage.category == Category.outage:
-            reply = f"""Dear {customer_name},
+            reply = f"""Hi {customer_name},
 
 Thank you for reporting this critical issue. We understand the severity and have immediately escalated this to our engineering team.
 
@@ -300,12 +300,9 @@ Based on our incident response procedures {citations[0] if citations else '[KB:o
 
 We will provide updates every 30 minutes until resolution. You can also monitor our status page for real-time updates.
 
-{"Please provide the following to help us investigate faster: " + ", ".join(extracted.missing_fields) if extracted.missing_fields else ""}
+{"To help us investigate faster, please reply with the following information: " + ", ".join(extracted.missing_fields) + "." if extracted.missing_fields else ""}
 
-We sincerely apologize for the disruption and are working urgently to restore service.
-
-Best regards,
-Support Team"""
+We sincerely apologize for the disruption and are working urgently to restore service."""
             
             internal_notes = f"""- ESCALATED: P0 outage for {ticket.account_tier.value} customer
 - Routed to {routing.team.value} team per escalation matrix
@@ -315,18 +312,15 @@ Support Team"""
 - Next actions: Monitor incident channel, prepare customer update in 30 min"""
         
         elif triage.category == Category.billing:
-            reply = f"""Dear {customer_name},
+            reply = f"""Hi {customer_name},
 
 Thank you for reaching out about your billing concern. I understand how important it is to have clarity on your charges.
 
 I've located your account and {"the invoice " + extracted.order_id if extracted.order_id else "am reviewing your recent charges"}. Per our billing policies {citations[0] if citations else '[KB:billing_policies#dispute-resolution]'}, I'll review this and provide a detailed breakdown.
 
-{"To complete my review, could you please provide: " + ", ".join(extracted.missing_fields) + "?" if extracted.missing_fields else "I'll have a full response for you within 24 hours."}
+{"To complete my review, please reply with: " + ", ".join(extracted.missing_fields) + "." if extracted.missing_fields else "I'll have a full response for you within 24 hours."}
 
-If there was an error on our end, we will promptly issue a correction or refund as applicable.
-
-Best regards,
-Billing Support Team"""
+If there was an error on our end, we will promptly issue a correction or refund as applicable."""
             
             internal_notes = f"""- Billing inquiry for {ticket.account_tier.value} customer
 - Invoice/Order: {extracted.order_id or 'Not provided - check account history'}
@@ -336,7 +330,7 @@ Billing Support Team"""
 - If refund needed: Follow standard refund approval process"""
         
         elif triage.category == Category.bug:
-            reply = f"""Dear {customer_name},
+            reply = f"""Hi {customer_name},
 
 Thank you for the detailed bug report. We appreciate you taking the time to document this issue.
 
@@ -344,12 +338,9 @@ I've logged this with our engineering team for investigation. {"The reproduction
 
 Per our bug handling process {citations[0] if citations else '[KB:bug_reporting#triage-process]'}, {"since this is in a " + extracted.environment + " environment, " if extracted.environment else ""}we'll prioritize this appropriately.
 
-{"To help us investigate further, could you please provide: " + ", ".join(extracted.missing_fields) + "?" if extracted.missing_fields else ""}
+{"To help us investigate further, please reply with: " + ", ".join(extracted.missing_fields) + "." if extracted.missing_fields else ""}
 
-We'll update you once we have more information on the timeline for a fix.
-
-Best regards,
-Technical Support Team"""
+We'll update you once we have more information on the timeline for a fix."""
             
             internal_notes = f"""- Bug report from {ticket.account_tier.value} customer
 - Environment: {extracted.environment or 'Unknown - clarify with customer'}
@@ -360,18 +351,15 @@ Technical Support Team"""
 - Priority: {triage.urgency.value} based on environment and impact"""
         
         else:
-            reply = f"""Dear {customer_name},
+            reply = f"""Hi {customer_name},
 
 Thank you for contacting us. I've reviewed your request and am here to help.
 
 {"Based on our documentation " + citations[0] + ", " if citations else ""}I'll ensure your inquiry is handled promptly by the appropriate team.
 
-{"To better assist you, could you please provide: " + ", ".join(extracted.missing_fields) + "?" if extracted.missing_fields else ""}
+{"To better assist you, please reply with: " + ", ".join(extracted.missing_fields) + "." if extracted.missing_fields else ""}
 
-We'll follow up with you shortly.
-
-Best regards,
-Support Team"""
+We'll follow up with you shortly."""
             
             internal_notes = f"""- General inquiry from {ticket.account_tier.value} customer
 - Category: {triage.category.value}
@@ -379,10 +367,12 @@ Support Team"""
 - SLA: {routing.sla_hours} hours
 - Sentiment: {triage.sentiment.value}"""
         
+        # Return the draft - server will decide whether to send based on confidence
         return ReplyDraft(
             customer_reply=reply,
             internal_notes=internal_notes,
-            citations=citations
+            citations=citations,
+            should_send=False  # Default to not sending - server sets based on confidence
         )
     
     def mock_input_guardrail(self, ticket: SupportTicket) -> InputGuardrailStatus:

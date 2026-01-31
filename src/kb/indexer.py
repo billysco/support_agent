@@ -220,3 +220,4 @@ if __name__ == "__main__":
     build_kb_index(use_mock=use_mock, force_rebuild=args.force)
     print("Done!")
 
+

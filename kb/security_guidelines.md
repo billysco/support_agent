@@ -123,3 +123,4 @@ A security incident includes:
 - EU region: Data stored in eu-west-1
 - Custom regions available for Enterprise
 
+

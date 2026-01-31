@@ -173,3 +173,4 @@ def get_sla_description(sla_hours: int) -> str:
         weeks = sla_hours // 168
         return f"{sla_hours} hours ({weeks} week{'s' if weeks > 1 else ''})"
 
+

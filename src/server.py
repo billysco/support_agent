@@ -26,7 +26,7 @@ from .kb.indexer import build_kb_index
 from .kb.ticket_history import get_ticket_history, TicketHistoryStore
 from .pipeline.triage import triage_and_extract
 from .pipeline.routing import compute_routing
-from .pipeline.reply import draft_reply
+from .pipeline.reply import draft_reply, generate_sla_notification, generate_review_notification
 from .pipeline.guardrail import check_guardrails, check_input_guardrails, sanitize_input
 
 
@@ -173,11 +173,17 @@ def process_ticket(
         )
 
         # Use the cached reply with note about auto-reply
-        reply = cached_reply
-        reply.internal_notes = (
-            f"[AUTO-REPLY] Based on similar ticket {matched_info['matched_ticket_id']} "
-            f"(similarity: {matched_info['similarity_score']:.2%})\n\n"
-            f"{reply.internal_notes}"
+        # Create a new ReplyDraft to ensure should_send is properly set
+        reply = ReplyDraft(
+            customer_reply=cached_reply.customer_reply,
+            internal_notes=(
+                f"[AUTO-REPLY] Based on similar ticket {matched_info['matched_ticket_id']} "
+                f"(similarity: {matched_info['similarity_score']:.2%})\n\n"
+                f"{cached_reply.internal_notes}"
+            ),
+            citations=cached_reply.citations,
+            should_send=True,  # Auto-replies should be sent
+            suggested_draft=None
         )
 
         # Skip guardrails for auto-reply (already validated previously)
@@ -220,7 +226,39 @@ def process_ticket(
     routing = compute_routing(triage, ticket.account_tier)
 
     # Stage 4: Reply drafting
-    reply = draft_reply(ticket, triage, extracted, routing, kb_hits, llm)
+    # High confidence = KB hits exist with good relevance scores (>= 0.7)
+    confidence_threshold = 0.7
+    high_confidence_hits = [hit for hit in kb_hits if hit.relevance_score >= confidence_threshold]
+    is_high_confidence = len(high_confidence_hits) > 0
+    
+    # Always generate the AI draft reply
+    draft_reply_obj = draft_reply(ticket, triage, extracted, routing, kb_hits, llm)
+    
+    if is_high_confidence:
+        # High confidence: Send the full AI response to the user
+        # Create new ReplyDraft with should_send=True
+        reply = ReplyDraft(
+            customer_reply=draft_reply_obj.customer_reply,
+            internal_notes=draft_reply_obj.internal_notes,
+            citations=draft_reply_obj.citations,
+            should_send=True,  # Send the full response
+            suggested_draft=None  # No separate draft needed
+        )
+    else:
+        # Low confidence: Send a "flagged for review" notification to user
+        # Keep the AI draft separate for agent review
+        notification_reply = generate_review_notification(ticket, routing)
+        reply = ReplyDraft(
+            customer_reply=notification_reply.customer_reply,
+            internal_notes=(
+                f"{notification_reply.internal_notes}\n\n"
+                f"--- AI SUGGESTED REPLY (FOR AGENT REVIEW) ---\n"
+                f"{draft_reply_obj.internal_notes}"
+            ),
+            citations=[],
+            should_send=True,  # Send the notification
+            suggested_draft=draft_reply_obj.customer_reply  # Keep AI draft for agent review
+        )
 
     # Stage 5: Guardrail check
     guardrail = check_guardrails(reply, kb_hits, llm)
@@ -286,10 +324,7 @@ def _create_blocked_response(
 
 We were unable to process your request at this time. If you believe this is an error, please resubmit your ticket with additional details about your issue.
 
-For urgent matters, please contact our support team directly.
-
-Best regards,
-Support Team""",
+For urgent matters, please contact our support team directly.""",
         internal_notes=f"""[BLOCKED BY INPUT GUARDRAILS]
 
 Risk Level: {input_guardrail.risk_level}
@@ -297,7 +332,8 @@ Issues Detected: {', '.join(input_guardrail.issues_found)}
 
 ACTION REQUIRED: Review this ticket manually before any response.
 This ticket was flagged by automated security systems and requires human review.""",
-        citations=[]
+        citations=[],
+        should_send=False  # Blocked tickets should not be sent automatically
     )
     
     # Output guardrail passes since we control this response

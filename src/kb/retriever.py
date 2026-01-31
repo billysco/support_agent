@@ -207,3 +207,4 @@ def reset_retriever():
     global _retriever_instance
     _retriever_instance = None
 
+

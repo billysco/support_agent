@@ -65,6 +65,18 @@ const elements = {
     detailMessageBody: document.getElementById('detailMessageBody'),
     detailFieldsGrid: document.getElementById('detailFieldsGrid'),
     
+    // Agent response in conversation
+    agentResponseItem: document.getElementById('agentResponseItem'),
+    agentResponseBody: document.getElementById('agentResponseBody'),
+    agentResponseTime: document.getElementById('agentResponseTime'),
+    autoSentBadge: document.getElementById('autoSentBadge'),
+
+    // Follow-up reply
+    followUpMessages: document.getElementById('followUpMessages'),
+    replyBox: document.getElementById('replyBox'),
+    customerReplyInput: document.getElementById('customerReplyInput'),
+    sendCustomerReply: document.getElementById('sendCustomerReply'),
+    
     // Agent panel
     panelTabs: document.querySelectorAll('.panel-tab'),
     panelReasoning: document.getElementById('panelReasoning'),
@@ -408,6 +420,14 @@ function initDetailView() {
     elements.citationModal.addEventListener('click', (e) => {
         if (e.target === elements.citationModal) closeCitationModal();
     });
+
+    // Follow-up reply
+    elements.sendCustomerReply.addEventListener('click', handleCustomerFollowUp);
+    elements.customerReplyInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            handleCustomerFollowUp();
+        }
+    });
 }
 
 function switchPanel(panelName) {
@@ -480,8 +500,12 @@ async function processTicketForDetail(ticket) {
 function displayTicketDetail() {
     const ticket = state.currentTicket;
     const result = state.currentResult;
-    
+
     if (!ticket || !result) return;
+
+    // Clear any previous follow-up messages
+    elements.followUpMessages.innerHTML = '';
+    elements.customerReplyInput.value = '';
     
     // Header
     elements.detailTicketId.textContent = ticket.ticket_id;
@@ -522,6 +546,9 @@ function displayTicketDetail() {
 
     // Reply with citation highlighting
     displayReply(result);
+
+    // Agent response in the main conversation (below customer message)
+    displayAgentResponse(result);
 
     // Notes
     displayNotes(result);
@@ -760,7 +787,80 @@ function displayReply(result) {
 
     // Display reply with citation highlighting
     const replyText = result.reply.customer_reply;
-    elements.replyContent.innerHTML = highlightCitations(replyText, result.kb_hits);
+    const suggestedDraft = result.reply.suggested_draft;
+    
+    let replyHtml = '';
+    
+    // If there's a suggested draft, it means low confidence - show notification sent + AI draft for review
+    if (suggestedDraft) {
+        replyHtml = `
+            <div class="reply-section sent-reply flagged-section">
+                <div class="reply-section-header">
+                    <span class="reply-section-label sent-label">Notification Sent to Customer</span>
+                    <span class="reply-section-badge flagged-badge">Low Confidence</span>
+                </div>
+                <div class="reply-section-content">${highlightCitations(replyText, result.kb_hits)}</div>
+            </div>
+            <div class="reply-section draft-reply">
+                <div class="reply-section-header">
+                    <span class="reply-section-label draft-label">AI Suggested Response</span>
+                    <span class="reply-section-badge draft-badge">Needs Agent Review</span>
+                </div>
+                <div class="reply-section-content">${highlightCitations(suggestedDraft, result.kb_hits)}</div>
+            </div>
+        `;
+    } else {
+        // High confidence - full response was sent
+        replyHtml = `
+            <div class="reply-section-header-inline">
+                <span class="reply-section-badge sent-badge-inline">High Confidence - Response Sent</span>
+            </div>
+            ${highlightCitations(replyText, result.kb_hits)}
+        `;
+    }
+    
+    elements.replyContent.innerHTML = replyHtml;
+}
+
+function displayAgentResponse(result) {
+    // Show the agent response in the main conversation panel (below customer message)
+    const reply = result.reply;
+    
+    console.log('displayAgentResponse called');
+    console.log('reply object:', reply);
+    console.log('should_send value:', reply ? reply.should_send : 'reply is null');
+    console.log('agentResponseItem element:', elements.agentResponseItem);
+    
+    if (!reply) {
+        console.error('No reply in result');
+        return;
+    }
+    
+    if (!elements.agentResponseItem) {
+        console.error('agentResponseItem element not found');
+        return;
+    }
+    
+    // ALWAYS show the agent response - should_send should always be true now
+    // (either full response or notification is sent)
+    elements.agentResponseItem.style.display = 'block';
+    elements.agentResponseBody.innerHTML = highlightCitations(reply.customer_reply, result.kb_hits);
+    elements.agentResponseTime.textContent = 'Just now';
+    
+    // Check if this is a low-confidence response (has suggested_draft means notification was sent)
+    if (reply.suggested_draft) {
+        // Low confidence - notification was sent, draft available for review
+        elements.autoSentBadge.textContent = 'Flagged for Review';
+        elements.autoSentBadge.style.display = 'inline-block';
+        elements.autoSentBadge.className = 'auto-sent-badge flagged';
+    } else {
+        // High confidence - full response was sent
+        elements.autoSentBadge.textContent = 'Response Sent';
+        elements.autoSentBadge.style.display = 'inline-block';
+        elements.autoSentBadge.className = 'auto-sent-badge sent';
+    }
+    
+    console.log('Agent response displayed successfully');
 }
 
 function highlightCitations(text, kbHits) {
@@ -804,6 +904,95 @@ function showCitationSource(element) {
 
 function closeCitationModal() {
     elements.citationModal.classList.remove('visible');
+}
+
+async function handleCustomerFollowUp() {
+    const replyText = elements.customerReplyInput.value.trim();
+    if (!replyText) return;
+
+    const ticket = state.currentTicket;
+    if (!ticket) return;
+
+    // Disable input while processing
+    elements.customerReplyInput.disabled = true;
+    elements.sendCustomerReply.disabled = true;
+    elements.sendCustomerReply.classList.add('loading');
+
+    // Add customer's follow-up message to conversation
+    addFollowUpMessage(ticket.customer_name, replyText, 'customer');
+
+    // Clear input
+    elements.customerReplyInput.value = '';
+
+    // Create updated ticket with follow-up context
+    const followUpTicket = {
+        ...ticket,
+        ticket_id: ticket.ticket_id + '-followup-' + Date.now(),
+        body: `[FOLLOW-UP to ticket ${ticket.ticket_id}]\n\nOriginal issue: ${ticket.body}\n\nCustomer follow-up: ${replyText}`,
+        subject: `Re: ${ticket.subject}`
+    };
+
+    try {
+        // Process follow-up through the pipeline
+        const response = await fetch('/api/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(followUpTicket)
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to process follow-up');
+        }
+
+        const result = await response.json();
+
+        // Add agent's response to conversation
+        addFollowUpMessage('Support Agent', result.reply.customer_reply, 'agent', result.kb_hits);
+
+        // Update the current result for context
+        state.currentResult = result;
+
+        showToast('Follow-up processed', 'success');
+
+    } catch (error) {
+        showToast(`Error: ${error.message}`, 'error');
+        // Remove the customer message if processing failed
+        const lastMessage = elements.followUpMessages.lastElementChild;
+        if (lastMessage) lastMessage.remove();
+    } finally {
+        elements.customerReplyInput.disabled = false;
+        elements.sendCustomerReply.disabled = false;
+        elements.sendCustomerReply.classList.remove('loading');
+    }
+}
+
+function addFollowUpMessage(senderName, content, type, kbHits = []) {
+    const initials = type === 'customer' ? getInitials(senderName) : 'AI';
+    const avatarClass = type === 'customer' ? '' : 'agent-avatar';
+    const itemClass = type === 'customer' ? 'follow-up-message' : 'follow-up-response';
+    const labelClass = type === 'customer' ? 'customer' : 'agent';
+    const label = type === 'customer' ? 'Customer Reply' : 'Agent Response';
+
+    const messageHtml = `
+        <div class="conversation-item ${itemClass}">
+            <div class="message-header">
+                <div class="avatar ${avatarClass}">${initials}</div>
+                <div class="message-meta">
+                    <span class="sender-name">${escapeHtml(senderName)}</span>
+                    <span class="message-time">Just now</span>
+                </div>
+            </div>
+            <div class="message-content">
+                <span class="follow-up-label ${labelClass}">${label}</span>
+                <div class="message-body">${type === 'agent' ? highlightCitations(content, kbHits) : escapeHtml(content)}</div>
+            </div>
+        </div>
+    `;
+
+    elements.followUpMessages.insertAdjacentHTML('beforeend', messageHtml);
+
+    // Scroll to the new message
+    elements.followUpMessages.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
 function displayNotes(result) {

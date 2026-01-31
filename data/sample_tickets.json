@@ -1,0 +1,36 @@
+[
+  {
+    "ticket_id": "TKT-2024-001",
+    "created_at": "2024-01-15T09:23:00Z",
+    "customer_name": "Sarah Chen",
+    "customer_email": "sarah.chen@acmecorp.com",
+    "account_tier": "enterprise",
+    "product": "API Platform",
+    "subject": "URGENT: Production API returning 500 errors - All services down",
+    "body": "We are experiencing a critical production outage. Starting at approximately 9:15 AM EST, all API calls to our production environment in us-east-1 are returning HTTP 500 Internal Server Error.\n\nThis is affecting ALL of our customers and we are losing revenue every minute this continues. Our entire platform depends on your API.\n\nError message from our logs:\n\"Error: HTTP 500 - Internal Server Error. Request ID: req_abc123xyz\"\n\nWe have over 50,000 active users who cannot access our service right now. This is a P0 emergency.\n\nPlease escalate immediately and provide an ETA for resolution. We need someone on a call with us ASAP.\n\nEnvironment: Production\nRegion: us-east-1\nImpact: Complete service outage, revenue loss estimated at $10,000/hour",
+    "attachments": ["error_logs_20240115.txt", "screenshot_500_error.png"]
+  },
+  {
+    "ticket_id": "TKT-2024-002",
+    "created_at": "2024-01-15T14:45:00Z",
+    "customer_name": "Michael Rodriguez",
+    "customer_email": "m.rodriguez@techstartup.io",
+    "account_tier": "professional",
+    "product": "API Platform",
+    "subject": "Unexpected charge on January invoice - Need clarification",
+    "body": "Hi Support Team,\n\nI just reviewed our January invoice (INV-2024-1234) and noticed an unexpected charge of $847.50 labeled as \"API Overage Charges\".\n\nAccording to my understanding of our Professional plan, we should have 100,000 API calls included, and our dashboard shows we only used approximately 85,000 calls last month.\n\nCan you please explain:\n1. Why we were charged for overages when we didn't exceed our limit?\n2. Provide a detailed breakdown of the usage that led to this charge?\n3. If this is an error, how do we get a refund or credit?\n\nI've attached a screenshot of our usage dashboard showing 85,247 calls for the billing period.\n\nThis is the second time we've had billing discrepancies in the past 6 months, so I'd appreciate a thorough review.\n\nThanks,\nMichael",
+    "attachments": ["usage_dashboard_jan2024.png", "invoice_INV-2024-1234.pdf"]
+  },
+  {
+    "ticket_id": "TKT-2024-003",
+    "created_at": "2024-01-15T16:30:00Z",
+    "customer_name": "Emily Watson",
+    "customer_email": "emily.w@devshop.dev",
+    "account_tier": "starter",
+    "product": "API Platform",
+    "subject": "Bug: Webhook payload missing timestamp field in staging",
+    "body": "Hello,\n\nI've discovered a bug in the webhook payload structure when testing in our staging environment.\n\nSteps to reproduce:\n1. Configure a webhook endpoint in the dashboard\n2. Trigger an event that should fire the webhook (I used 'user.created')\n3. Inspect the received payload\n\nExpected behavior:\nThe webhook payload should include a 'timestamp' field as documented in your API docs (https://docs.example.com/webhooks#payload-structure)\n\nActual behavior:\nThe 'timestamp' field is missing from the payload. All other fields are present.\n\nExample received payload:\n{\n  \"event\": \"user.created\",\n  \"data\": {\n    \"user_id\": \"usr_123\",\n    \"email\": \"test@example.com\"\n  }\n}\n\nExpected payload (per docs):\n{\n  \"event\": \"user.created\",\n  \"timestamp\": \"2024-01-15T16:25:00Z\",\n  \"data\": {\n    \"user_id\": \"usr_123\",\n    \"email\": \"test@example.com\"\n  }\n}\n\nEnvironment: Staging\nAPI Version: v2\nWebhook endpoint: https://staging.devshop.dev/webhooks/receiver\n\nThis isn't blocking us since we're still in development, but we'd like to know if this is a known issue and when it might be fixed.\n\nThanks!",
+    "attachments": null
+  }
+]
+

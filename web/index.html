@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support Triage System</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">T</div>
+                <div class="logo-text">
+                    <h1>Support Triage</h1>
+                    <span class="subtitle">AI-Powered Ticket Classification</span>
+                </div>
+            </div>
+            <div class="mode-badge" id="modeBadge">
+                <span class="mode-dot"></span>
+                <span class="mode-text">Loading...</span>
+            </div>
+        </header>
+
+        <section class="input-section">
+            <div class="section-header">
+                <h2>Input Ticket</h2>
+                <div class="sample-buttons">
+                    <button class="btn btn-sample" data-sample="0">
+                        <span class="sample-icon urgent">!</span>
+                        Enterprise Outage
+                    </button>
+                    <button class="btn btn-sample" data-sample="1">
+                        <span class="sample-icon billing">$</span>
+                        Billing Issue
+                    </button>
+                    <button class="btn btn-sample" data-sample="2">
+                        <span class="sample-icon bug">B</span>
+                        Bug Report
+                    </button>
+                </div>
+            </div>
+            <div class="input-wrapper">
+                <textarea id="ticketInput" placeholder="Paste ticket JSON here or click a sample button above..."></textarea>
+                <div class="input-actions">
+                    <button class="btn btn-clear" id="clearBtn">Clear</button>
+                    <button class="btn btn-primary" id="processBtn">
+                        <span class="btn-text">Process Ticket</span>
+                        <span class="btn-loader"></span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="results-section" id="resultsSection">
+            <div class="results-grid">
+                <!-- Triage Card -->
+                <div class="result-card triage-card">
+                    <div class="card-header">
+                        <h3>Triage</h3>
+                        <div class="urgency-badge" id="urgencyBadge">--</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="stat-row">
+                            <span class="stat-label">Category</span>
+                            <span class="stat-value" id="category">--</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Sentiment</span>
+                            <span class="stat-value" id="sentiment">--</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Confidence</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" id="confidenceFill"></div>
+                                <span class="confidence-value" id="confidenceValue">--</span>
+                            </div>
+                        </div>
+                        <div class="rationale" id="rationale">--</div>
+                    </div>
+                </div>
+
+                <!-- Routing Card -->
+                <div class="result-card routing-card">
+                    <div class="card-header">
+                        <h3>Routing</h3>
+                        <div class="escalation-badge" id="escalationBadge">--</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="stat-row">
+                            <span class="stat-label">Team</span>
+                            <span class="stat-value team-value" id="team">--</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">SLA</span>
+                            <span class="stat-value" id="sla">--</span>
+                        </div>
+                        <div class="reasoning" id="reasoning">--</div>
+                    </div>
+                </div>
+
+                <!-- Guardrail Card -->
+                <div class="result-card guardrail-card">
+                    <div class="card-header">
+                        <h3>Guardrail</h3>
+                        <div class="guardrail-badge" id="guardrailBadge">--</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="issues-list" id="issuesList">
+                            <p class="no-issues">No issues detected</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Extracted Fields -->
+            <div class="result-card full-width">
+                <div class="card-header collapsible" data-target="extractedContent">
+                    <h3>Extracted Fields</h3>
+                    <span class="collapse-icon">-</span>
+                </div>
+                <div class="card-content" id="extractedContent">
+                    <div class="fields-grid" id="fieldsGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                    <div class="missing-fields" id="missingFields">
+                        <span class="missing-label">Missing:</span>
+                        <span class="missing-list">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KB Citations -->
+            <div class="result-card full-width">
+                <div class="card-header collapsible" data-target="kbContent">
+                    <h3>KB Citations</h3>
+                    <span class="collapse-icon">-</span>
+                </div>
+                <div class="card-content" id="kbContent">
+                    <div class="citations-list" id="citationsList">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Customer Reply -->
+            <div class="result-card full-width reply-card">
+                <div class="card-header collapsible" data-target="replyContent">
+                    <h3>Customer Reply</h3>
+                    <button class="btn btn-copy" id="copyReplyBtn">Copy</button>
+                </div>
+                <div class="card-content" id="replyContent">
+                    <div class="reply-text" id="replyText">--</div>
+                </div>
+            </div>
+
+            <!-- Internal Notes -->
+            <div class="result-card full-width notes-card">
+                <div class="card-header collapsible" data-target="notesContent">
+                    <h3>Internal Notes</h3>
+                </div>
+                <div class="card-content" id="notesContent">
+                    <div class="notes-text" id="notesText">--</div>
+                </div>
+            </div>
+
+            <!-- Raw JSON -->
+            <div class="result-card full-width json-card">
+                <div class="card-header collapsible collapsed" data-target="jsonContent">
+                    <h3>Raw JSON</h3>
+                    <span class="collapse-icon">+</span>
+                </div>
+                <div class="card-content collapsed" id="jsonContent">
+                    <pre class="json-output" id="jsonOutput"></pre>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>Support Triage System v1.0 | Processing in <span id="footerMode">--</span> mode</p>
+        </footer>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
+

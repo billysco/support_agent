@@ -36,6 +36,9 @@ from .pipeline.reply import (
     generate_followup_request, draft_reply_with_context
 )
 from .pipeline.guardrail import check_guardrails, check_input_guardrails, sanitize_input
+from .monitoring.event_generator import LogEventGenerator
+from .monitoring.threshold_checker import ThresholdChecker
+from .monitoring.schemas import LogEvent, AIIssue, AIAlert
 
 
 # Get project paths
@@ -91,6 +94,19 @@ _retriever = None
 _ticket_history = None
 _status_store = None
 _conversation_store = None
+
+# Monitoring state
+import threading
+_monitoring_lock = threading.Lock()
+_monitoring_state = {
+    "running": False,
+    "generator": None,
+    "threshold_checker": None,
+    "ai_agent": None,
+    "events": [],
+    "issues": [],
+    "alerts": []
+}
 
 
 def get_llm():
@@ -1098,6 +1114,146 @@ async def add_known_issue(issue_data: dict):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to add known issue: {str(e)}")
+
+
+# Monitoring API Endpoints
+@app.post("/api/monitoring/start")
+async def start_monitoring():
+    """Initialize and start the monitoring system."""
+    global _monitoring_state
+    
+    with _monitoring_lock:
+        if _monitoring_state["running"]:
+            raise HTTPException(status_code=400, detail="Monitoring is already running")
+        
+        try:
+            generator = LogEventGenerator(event_interval=2.0)
+            threshold_checker = ThresholdChecker()
+            
+            generator.start()
+            
+            _monitoring_state["running"] = True
+            _monitoring_state["generator"] = generator
+            _monitoring_state["threshold_checker"] = threshold_checker
+            _monitoring_state["events"] = []
+            _monitoring_state["issues"] = []
+            _monitoring_state["alerts"] = []
+            
+            return {
+                "success": True,
+                "message": "Monitoring started successfully",
+                "running": True
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to start monitoring: {str(e)}")
+
+
+@app.post("/api/monitoring/stop")
+async def stop_monitoring():
+    """Stop the monitoring system gracefully."""
+    global _monitoring_state
+    
+    with _monitoring_lock:
+        if not _monitoring_state["running"]:
+            raise HTTPException(status_code=400, detail="Monitoring is not running")
+        
+        try:
+            generator = _monitoring_state["generator"]
+            if generator:
+                generator.stop()
+            
+            _monitoring_state["running"] = False
+            _monitoring_state["generator"] = None
+            _monitoring_state["threshold_checker"] = None
+            
+            return {
+                "success": True,
+                "message": "Monitoring stopped successfully",
+                "running": False
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to stop monitoring: {str(e)}")
+
+
+@app.get("/api/monitoring/status")
+async def get_monitoring_status():
+    """Get current monitoring status and event count."""
+    with _monitoring_lock:
+        running = _monitoring_state["running"]
+        event_count = len(_monitoring_state["events"])
+        
+        return {
+            "running": running,
+            "event_count": event_count
+        }
+
+
+@app.get("/api/monitoring/events")
+async def get_monitoring_events(limit: int = 50):
+    """Get recent events sorted by timestamp descending."""
+    with _monitoring_lock:
+        generator = _monitoring_state["generator"]
+        threshold_checker = _monitoring_state["threshold_checker"]
+        
+        if not generator:
+            return []
+        
+        events = generator.get_events(limit=None)
+        
+        if threshold_checker:
+            for event in events:
+                if not event.flagged and not event.critical:
+                    result = threshold_checker.check_event(event)
+                    event.flagged = result.flagged
+                    event.critical = result.critical
+        
+        _monitoring_state["events"] = events
+        
+        if limit:
+            events = events[:limit]
+        
+        return [event.model_dump(mode='json') for event in events]
+
+
+@app.get("/api/monitoring/flagged")
+async def get_flagged_events():
+    """Get only flagged or critical events."""
+    with _monitoring_lock:
+        events = _monitoring_state["events"]
+        flagged_events = [e for e in events if e.flagged or e.critical]
+        
+        return [event.model_dump(mode='json') for event in flagged_events]
+
+
+@app.get("/api/monitoring/ai-actions")
+async def get_ai_actions():
+    """Get AI-generated issues and alerts."""
+    with _monitoring_lock:
+        issues = _monitoring_state["issues"]
+        alerts = _monitoring_state["alerts"]
+        
+        return {
+            "issues": [issue.model_dump(mode='json') for issue in issues],
+            "alerts": [alert.model_dump(mode='json') for alert in alerts]
+        }
+
+
+@app.post("/api/monitoring/clear")
+async def clear_monitoring_data():
+    """Clear all monitoring events, issues, and alerts."""
+    with _monitoring_lock:
+        generator = _monitoring_state["generator"]
+        if generator:
+            generator.clear_events()
+        
+        _monitoring_state["events"] = []
+        _monitoring_state["issues"] = []
+        _monitoring_state["alerts"] = []
+        
+        return {
+            "success": True,
+            "message": "Monitoring data cleared successfully"
+        }
 
 
 # Static file serving

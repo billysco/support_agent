@@ -1,0 +1,69 @@
+{
+  "conversation_id": "conv-TKT-1769915811376-followup-1769915880919",
+  "original_ticket_id": "TKT-1769915811376-followup-1769915880919",
+  "customer_email": "bill@testcompany.com",
+  "customer_name": "bill",
+  "account_tier": "enterprise",
+  "product": "api platform",
+  "subject": "Re: my api is running slowly",
+  "messages": [
+    {
+      "message_id": "TKT-1769915811376-followup-1769915880919",
+      "timestamp": "2026-02-01T03:16:51.376000Z",
+      "sender_type": "customer",
+      "sender_id": "bill@testcompany.com",
+      "content": "Subject: Re: my api is running slowly\n\n[FOLLOW-UP to ticket TKT-1769915811376]\n\nOriginal issue: api is running very slowly with intermittent outages\n\nCustomer follow-up: production in us-east-1. its slowing down when we make concurrent api calls",
+      "extracted_fields": {
+        "environment": "production",
+        "region": "us-east-1",
+        "error_message": null,
+        "reproduction_steps": "when we make concurrent api calls",
+        "impact": "slowing down during concurrent API calls",
+        "requested_action": null,
+        "order_id": null,
+        "missing_fields": [
+          "specific error messages",
+          "expected behavior",
+          "API call details"
+        ]
+      },
+      "is_auto_reply": false
+    }
+  ],
+  "status": "awaiting_customer",
+  "pending_fields": [
+    "specific error messages",
+    "expected behavior",
+    "API call details"
+  ],
+  "merged_extracted_fields": {
+    "environment": "production",
+    "region": "us-east-1",
+    "error_message": null,
+    "reproduction_steps": "when we make concurrent api calls",
+    "impact": "slowing down during concurrent API calls",
+    "requested_action": null,
+    "order_id": null,
+    "missing_fields": [
+      "specific error messages",
+      "expected behavior",
+      "API call details"
+    ]
+  },
+  "current_triage": {
+    "urgency": "P1",
+    "category": "bug",
+    "sentiment": "negative",
+    "confidence": 0.9,
+    "rationale": "The customer reports that the API is running slowly with intermittent outages, which indicates a major issue affecting functionality."
+  },
+  "current_routing": {
+    "team": "engineering",
+    "sla_hours": 4,
+    "escalation": true,
+    "reasoning": "Routed to engineering due to bug classification. SLA set based on enterprise tier and P1 priority. Escalated per enterprise account policy."
+  },
+  "created_at": "2026-02-01T03:16:51.376000Z",
+  "updated_at": "2026-01-31T22:18:07.066081",
+  "resolved_at": null
+}

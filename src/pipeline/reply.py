@@ -1,13 +1,16 @@
 """
 Reply drafting pipeline stage.
 Generates customer-facing replies with KB citations and internal notes.
+Includes follow-up request generation for Q&A conversations.
 """
+
+from typing import Optional
 
 from ..schemas import (
     SupportTicket, TriageResult, ExtractedFields, RoutingDecision,
-    KBHit, ReplyDraft
+    KBHit, ReplyDraft, Conversation
 )
-from ..llm_client import LLMProvider, MockProvider
+from ..llm_client import OpenAIProvider
 from .routing import get_sla_description
 
 
@@ -76,11 +79,11 @@ def draft_reply(
     extracted: ExtractedFields,
     routing: RoutingDecision,
     kb_hits: list[KBHit],
-    llm: LLMProvider
+    llm: OpenAIProvider
 ) -> ReplyDraft:
     """
     Draft a customer reply with KB citations.
-    
+
     Args:
         ticket: Original support ticket
         triage: Triage classification results
@@ -88,23 +91,19 @@ def draft_reply(
         routing: Routing decision
         kb_hits: Relevant KB passages
         llm: LLM provider instance
-    
+
     Returns:
         ReplyDraft with customer reply, internal notes, and citations
     """
-    # Use mock provider's specialized method if available
-    if isinstance(llm, MockProvider):
-        return llm.mock_reply(ticket, triage, extracted, kb_hits, routing)
-    
     # Format extracted fields for prompt
     extracted_fields_str = _format_extracted_fields(extracted)
-    
+
     # Format missing fields
     missing_fields_str = ", ".join(extracted.missing_fields) if extracted.missing_fields else "None identified"
-    
+
     # Format KB passages
     kb_passages_str = _format_kb_passages(kb_hits)
-    
+
     # Build prompt
     prompt = reply_user_prompt_template.format(
         ticket_id=ticket.ticket_id,
@@ -122,16 +121,10 @@ def draft_reply(
         missing_fields=missing_fields_str,
         kb_passages=kb_passages_str
     )
-    
+
     # Get LLM response
-    try:
-        response = llm.complete_json(prompt, reply_system_prompt)
-        return _parse_reply_response(response, kb_hits)
-    except Exception as e:
-        print(f"Warning: LLM reply generation failed: {e}")
-        # Fall back to mock provider
-        mock = MockProvider()
-        return mock.mock_reply(ticket, triage, extracted, kb_hits, routing)
+    response = llm.complete_json(prompt, reply_system_prompt)
+    return _parse_reply_response(response, kb_hits)
 
 
 def _format_extracted_fields(extracted: ExtractedFields) -> str:
@@ -306,18 +299,18 @@ def _parse_reply_response(response: dict, kb_hits: list[KBHit]) -> ReplyDraft:
 
     # Strip any signature blocks the LLM may have added
     customer_reply = _strip_signature(customer_reply)
-    
+
     # Ensure citations are properly formatted
     formatted_citations = []
     for citation in citations:
         if not citation.startswith("["):
             citation = f"[{citation}]"
         formatted_citations.append(citation)
-    
+
     # If no citations provided but KB hits exist, add them
     if not formatted_citations and kb_hits:
         formatted_citations = [hit.citation for hit in kb_hits[:3]]
-    
+
     # Return the draft - the server will decide whether to send based on confidence
     return ReplyDraft(
         customer_reply=customer_reply,
@@ -325,4 +318,284 @@ def _parse_reply_response(response: dict, kb_hits: list[KBHit]) -> ReplyDraft:
         citations=formatted_citations,
         should_send=False  # Default to not sending - server will set based on confidence
     )
+
+
+# Field descriptions for follow-up requests
+FIELD_DESCRIPTIONS = {
+    "environment": "which environment this is occurring in (production, staging, or development)",
+    "region": "your geographic region or cloud region (e.g., us-east-1, EU, etc.)",
+    "error_message": "the exact error message you're seeing",
+    "reproduction_steps": "the steps to reproduce this issue",
+    "impact": "how this is affecting your business or users",
+    "requested_action": "what specific outcome you're looking for",
+    "order_id": "your order ID or invoice number",
+}
+
+
+def generate_followup_request(
+    ticket: SupportTicket,
+    pending_fields: list[str],
+    conversation: Optional[Conversation] = None,
+    routing: Optional[RoutingDecision] = None,
+    fields_received: list[str] | None = None
+) -> ReplyDraft:
+    """
+    Generate a follow-up request asking the customer for specific missing information.
+
+    Args:
+        ticket: The support ticket (original or follow-up)
+        pending_fields: List of fields still needed from customer
+        conversation: Optional conversation context
+        routing: Optional routing decision for SLA info
+        fields_received: Optional list of fields just provided by customer
+
+    Returns:
+        ReplyDraft with follow-up request
+    """
+    customer_first_name = ticket.customer_name.split()[0] if ticket.customer_name else "there"
+
+    # Determine if this is initial or continued follow-up
+    message_count = len(conversation.messages) if conversation else 1
+    is_continued = message_count > 2  # More than initial + first reply
+
+    # Build the list of needed information
+    info_requests = []
+    for field in pending_fields:
+        description = FIELD_DESCRIPTIONS.get(field, f"information about {field.replace('_', ' ')}")
+        info_requests.append(f"• {description.capitalize()}")
+
+    info_list = "\n".join(info_requests)
+
+    # Build acknowledgment for received fields
+    acknowledgment = ""
+    if fields_received and is_continued:
+        received_descriptions = []
+        for field in fields_received:
+            desc = FIELD_DESCRIPTIONS.get(field, field.replace('_', ' '))
+            received_descriptions.append(desc)
+        if received_descriptions:
+            acknowledgment = f"Thank you for providing {', '.join(received_descriptions)}. "
+
+    if is_continued:
+        # Continued follow-up - acknowledge what they provided, ask for rest
+        notification_message = f"""Hi {customer_first_name},
+
+{acknowledgment}To continue helping you resolve this issue, we still need a few more details:
+
+{info_list}
+
+Please reply with this information and we'll continue investigating."""
+    else:
+        # Initial follow-up request
+        notification_message = f"""Hi {customer_first_name},
+
+Thank you for reaching out. To help us investigate your issue and provide the best solution, could you please provide the following information:
+
+{info_list}
+
+Once we have these details, we'll be able to assist you more effectively. Please reply to this message with the requested information."""
+
+    # Build internal notes
+    internal_notes = f"""FOLLOW-UP REQUEST SENT
+Missing fields: {', '.join(pending_fields)}
+Message count in conversation: {message_count}"""
+
+    if fields_received:
+        internal_notes += f"\nFields just received: {', '.join(fields_received)}"
+
+    internal_notes += """
+
+Customer has been asked to provide additional details.
+Conversation will continue once they reply."""
+
+    if routing:
+        internal_notes += f"\nTeam: {routing.team.value}"
+        internal_notes += f"\nSLA: {routing.sla_hours} hours"
+
+    return ReplyDraft(
+        customer_reply=notification_message,
+        internal_notes=internal_notes,
+        citations=[],
+        should_send=True
+    )
+
+
+def generate_followup_acknowledgment(
+    ticket: SupportTicket,
+    conversation: Conversation,
+    new_fields_received: list[str],
+    still_pending: list[str]
+) -> str:
+    """
+    Generate an acknowledgment for received follow-up information.
+
+    Args:
+        ticket: The follow-up ticket
+        conversation: The conversation context
+        new_fields_received: Fields that were just provided
+        still_pending: Fields still missing
+
+    Returns:
+        Acknowledgment text to include in reply
+    """
+    customer_first_name = ticket.customer_name.split()[0] if ticket.customer_name else "there"
+
+    if new_fields_received:
+        fields_str = ", ".join(f.replace("_", " ") for f in new_fields_received)
+        ack = f"Thank you for providing the {fields_str}. "
+    else:
+        ack = "Thank you for your reply. "
+
+    if still_pending:
+        pending_str = ", ".join(FIELD_DESCRIPTIONS.get(f, f.replace("_", " ")) for f in still_pending)
+        ack += f"We still need: {pending_str}."
+    else:
+        ack += "We now have all the information we need to investigate your issue."
+
+    return ack
+
+
+contextual_reply_system_prompt = """You are an expert customer support agent continuing an ongoing conversation with a customer.
+
+Your replies must:
+1. Be professional, empathetic, and helpful
+2. Acknowledge the information the customer just provided
+3. Reference knowledge base articles using [KB:doc_name#section] format
+4. Only make claims supported by the provided KB passages
+5. Provide clear next steps based on all information gathered so far
+6. Never fabricate policies, pricing, or commitments
+7. DO NOT include any signature, closing, or sign-off
+8. If still missing critical information, ask specifically for it
+
+You have access to the full conversation history and should respond appropriately."""
+
+contextual_reply_user_prompt_template = """Draft a reply for this ongoing support conversation.
+
+CONVERSATION HISTORY:
+{conversation_context}
+
+CURRENT MESSAGE FROM CUSTOMER:
+{current_message}
+
+INFORMATION JUST PROVIDED:
+{fields_received}
+
+TRIAGE:
+- Urgency: {urgency}
+- Category: {category}
+- Sentiment: {sentiment}
+
+ROUTING:
+- Team: {team}
+- SLA: {sla_hours} hours
+
+ALL EXTRACTED FIELDS (merged from entire conversation):
+{extracted_fields}
+
+STILL MISSING:
+{missing_fields}
+
+RELEVANT KB PASSAGES:
+{kb_passages}
+
+Generate a JSON response with:
+{{
+    "customer_reply": "The full customer-facing reply. Acknowledge what they provided, then address their issue using the KB info. Include [KB:doc#section] citations where appropriate.",
+    "internal_notes": "Notes for the support agent about conversation progress and next steps.",
+    "citations": ["KB:doc1#section1", "KB:doc2#section2"]
+}}
+
+Remember:
+- Use the customer's first name
+- Acknowledge the specific information they just provided
+- Build on the conversation context - don't repeat information unnecessarily
+- If you now have all needed info, provide a complete resolution
+- If still missing info, explain what else you need and why
+- DO NOT include any signature or sign-off line"""
+
+
+def draft_reply_with_context(
+    ticket: SupportTicket,
+    triage: TriageResult,
+    extracted: ExtractedFields,
+    routing: RoutingDecision,
+    kb_hits: list[KBHit],
+    llm: OpenAIProvider,
+    conversation: Conversation,
+    fields_received: list[str] | None = None
+) -> ReplyDraft:
+    """
+    Draft a reply using the full conversation context.
+
+    Args:
+        ticket: Current ticket/message
+        triage: Triage classification
+        extracted: Current extraction (merged across conversation)
+        routing: Routing decision
+        kb_hits: Relevant KB passages
+        llm: LLM provider
+        conversation: Full conversation context
+        fields_received: Fields that were just provided in this message
+
+    Returns:
+        ReplyDraft with context-aware response
+    """
+    # Use merged fields from conversation if available
+    merged_extracted = conversation.merged_extracted_fields or extracted
+
+    # Format conversation context
+    conversation_context = _format_conversation_context(conversation)
+
+    # Format fields received
+    if fields_received:
+        fields_received_str = "\n".join(f"- {field}: {getattr(merged_extracted, field, 'provided')}" for field in fields_received)
+    else:
+        fields_received_str = "No specific fields identified as newly provided"
+
+    # Format extracted fields
+    extracted_fields_str = _format_extracted_fields(merged_extracted)
+
+    # Format missing fields
+    missing_fields_str = ", ".join(merged_extracted.missing_fields) if merged_extracted.missing_fields else "None - all required information gathered"
+
+    # Format KB passages
+    kb_passages_str = _format_kb_passages(kb_hits)
+
+    # Build prompt
+    prompt = contextual_reply_user_prompt_template.format(
+        conversation_context=conversation_context,
+        current_message=ticket.body,
+        fields_received=fields_received_str,
+        urgency=triage.urgency.value,
+        category=triage.category.value,
+        sentiment=triage.sentiment.value,
+        team=routing.team.value,
+        sla_hours=routing.sla_hours,
+        extracted_fields=extracted_fields_str,
+        missing_fields=missing_fields_str,
+        kb_passages=kb_passages_str
+    )
+
+    # Get LLM response
+    response = llm.complete_json(prompt, contextual_reply_system_prompt)
+    return _parse_reply_response(response, kb_hits)
+
+
+def _format_conversation_context(conversation: Conversation) -> str:
+    """Format conversation history for the LLM prompt."""
+    context_parts = [
+        f"Subject: {conversation.subject}",
+        f"Customer: {conversation.customer_name} ({conversation.account_tier.value} tier)",
+        f"Product: {conversation.product}",
+        ""
+    ]
+
+    for i, msg in enumerate(conversation.messages):
+        sender_label = msg.sender_type.upper()
+        timestamp = msg.timestamp.strftime("%Y-%m-%d %H:%M")
+        context_parts.append(f"[{sender_label}] ({timestamp})")
+        context_parts.append(msg.content)
+        context_parts.append("")
+
+    return "\n".join(context_parts)
 

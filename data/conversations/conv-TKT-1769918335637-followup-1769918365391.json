@@ -1,0 +1,69 @@
+{
+  "conversation_id": "conv-TKT-1769918335637-followup-1769918365391",
+  "original_ticket_id": "TKT-1769918335637-followup-1769918365391",
+  "customer_email": "bill@testcompany.com",
+  "customer_name": "bill",
+  "account_tier": "enterprise",
+  "product": "api platform",
+  "subject": "Re: my api is running slowly",
+  "messages": [
+    {
+      "message_id": "TKT-1769918335637-followup-1769918365391",
+      "timestamp": "2026-02-01T03:58:55.637000Z",
+      "sender_type": "customer",
+      "sender_id": "bill@testcompany.com",
+      "content": "Subject: Re: my api is running slowly\n\n[FOLLOW-UP to ticket TKT-1769918335637]\n\nOriginal issue: my api is super slow rn\n\nCustomer follow-up: 1. production\n2. us-east-1\n3. making api calls as part of a normal workflow",
+      "extracted_fields": {
+        "environment": "production",
+        "region": "us-east-1",
+        "error_message": null,
+        "reproduction_steps": "making api calls as part of a normal workflow",
+        "impact": null,
+        "requested_action": null,
+        "order_id": null,
+        "missing_fields": [
+          "error_message",
+          "impact",
+          "requested_action"
+        ]
+      },
+      "is_auto_reply": false
+    }
+  ],
+  "status": "awaiting_customer",
+  "pending_fields": [
+    "error_message",
+    "impact",
+    "requested_action"
+  ],
+  "merged_extracted_fields": {
+    "environment": "production",
+    "region": "us-east-1",
+    "error_message": null,
+    "reproduction_steps": "making api calls as part of a normal workflow",
+    "impact": null,
+    "requested_action": null,
+    "order_id": null,
+    "missing_fields": [
+      "error_message",
+      "impact",
+      "requested_action"
+    ]
+  },
+  "current_triage": {
+    "urgency": "P1",
+    "category": "bug",
+    "sentiment": "negative",
+    "confidence": 0.85,
+    "rationale": "The customer reports that their API is running slowly, which indicates a significant impact on their production environment."
+  },
+  "current_routing": {
+    "team": "engineering",
+    "sla_hours": 4,
+    "escalation": true,
+    "reasoning": "Routed to engineering due to bug classification. SLA set based on enterprise tier and P1 priority. Escalated per enterprise account policy."
+  },
+  "created_at": "2026-02-01T03:58:55.637000Z",
+  "updated_at": "2026-01-31T22:59:31.308454",
+  "resolved_at": null
+}

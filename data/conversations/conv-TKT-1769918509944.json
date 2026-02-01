@@ -1,0 +1,96 @@
+{
+  "conversation_id": "conv-TKT-1769918509944",
+  "original_ticket_id": "TKT-1769918509944",
+  "customer_email": "bill@testcompany.com",
+  "customer_name": "bill",
+  "account_tier": "enterprise",
+  "product": "api platform",
+  "subject": "my api is running slowly",
+  "messages": [
+    {
+      "message_id": "TKT-1769918509944",
+      "timestamp": "2026-02-01T04:01:49.944000Z",
+      "sender_type": "customer",
+      "sender_id": "bill@testcompany.com",
+      "content": "Subject: my api is running slowly\n\napi is super slow and occasionally goes out",
+      "extracted_fields": {
+        "environment": "production",
+        "region": "us-east-1",
+        "error_message": null,
+        "reproduction_steps": null,
+        "impact": "API is running slowly and occasionally goes out",
+        "requested_action": null,
+        "order_id": null,
+        "missing_fields": [
+          "reproduction_steps",
+          "requested_action"
+        ]
+      },
+      "is_auto_reply": false
+    },
+    {
+      "message_id": "TKT-1769918509944-followup-1769918538445",
+      "timestamp": "2026-02-01T04:02:18.445000Z",
+      "sender_type": "customer",
+      "sender_id": "bill@testcompany.com",
+      "content": "production in us-east-1. this is happening under normal load while not trying anything new",
+      "extracted_fields": {
+        "environment": "production",
+        "region": "us-east-1",
+        "error_message": null,
+        "reproduction_steps": null,
+        "impact": null,
+        "requested_action": null,
+        "order_id": null,
+        "missing_fields": [
+          "reproduction_steps",
+          "requested_action"
+        ]
+      },
+      "is_auto_reply": false
+    },
+    {
+      "message_id": "reply-1769918552.947782",
+      "timestamp": "2026-01-31T23:02:32.947792",
+      "sender_type": "agent",
+      "sender_id": "system",
+      "content": "Thank you for providing the details about your production environment in us-east-1. I understand that your API is running slowly and occasionally becomes unresponsive under normal load. We are currently aware of an issue that may be affecting API performance, particularly with intermittent timeouts that can lead to slow responses or outages. Our engineering team is actively investigating this matter and is working to resolve it as quickly as possible. We will provide updates every hour as we progress on this issue. \n\nTo assist us in troubleshooting further, could you please provide the specific steps to reproduce the issue? This information will help us identify the root cause more efficiently. Thank you for your patience as we work through this.",
+      "extracted_fields": null,
+      "is_auto_reply": false
+    }
+  ],
+  "status": "awaiting_customer",
+  "pending_fields": [
+    "reproduction_steps",
+    "requested_action"
+  ],
+  "merged_extracted_fields": {
+    "environment": "production",
+    "region": "us-east-1",
+    "error_message": null,
+    "reproduction_steps": null,
+    "impact": "API is running slowly and occasionally goes out",
+    "requested_action": null,
+    "order_id": null,
+    "missing_fields": [
+      "reproduction_steps",
+      "requested_action"
+    ]
+  },
+  "current_triage": {
+    "urgency": "P1",
+    "category": "bug",
+    "sentiment": "negative",
+    "confidence": 0.8,
+    "rationale": "The customer reported that the API is running slowly in a production environment under normal load, indicating a potential bug."
+  },
+  "current_routing": {
+    "team": "engineering",
+    "sla_hours": 4,
+    "escalation": true,
+    "reasoning": "Routed to engineering due to bug classification. SLA set based on enterprise tier and P1 priority. Escalated per enterprise account policy."
+  },
+  "created_at": "2026-02-01T04:01:49.944000Z",
+  "updated_at": "2026-01-31T23:02:32.947808",
+  "resolved_at": null
+}

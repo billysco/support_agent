@@ -9,7 +9,7 @@ from typing import Optional
 from ..schemas import (
     SupportTicket, ReplyDraft, KBHit, GuardrailStatus, InputGuardrailStatus
 )
-from ..llm_client import LLMProvider, MockProvider
+from ..llm_client import OpenAIProvider
 
 
 # =============================================================================
@@ -185,22 +185,18 @@ If no issues found, return passed=true with empty arrays."""
 
 def check_input_guardrails(
     ticket: SupportTicket,
-    llm: LLMProvider
+    llm: OpenAIProvider
 ) -> InputGuardrailStatus:
     """
     Run guardrail checks on user input (support ticket).
-    
+
     Args:
         ticket: The support ticket to check
         llm: LLM provider instance
-    
+
     Returns:
         InputGuardrailStatus with pass/fail, risk level, and issues
     """
-    # Use mock provider's specialized method if available
-    if isinstance(llm, MockProvider):
-        return llm.mock_input_guardrail(ticket)
-    
     # Run rule-based checks first (fast, deterministic)
     rule_issues, rule_risk, should_block = _run_input_rule_checks(ticket)
     
@@ -302,7 +298,7 @@ def _run_input_rule_checks(ticket: SupportTicket) -> tuple[list[str], str, bool]
 
 def _run_input_llm_checks(
     ticket: SupportTicket,
-    llm: LLMProvider
+    llm: OpenAIProvider
 ) -> InputGuardrailStatus:
     """Run LLM-based semantic checks on input."""
     
@@ -382,23 +378,19 @@ def sanitize_input(ticket: SupportTicket, guardrail_status: InputGuardrailStatus
 def check_output_guardrails(
     reply: ReplyDraft,
     kb_hits: list[KBHit],
-    llm: LLMProvider
+    llm: OpenAIProvider
 ) -> GuardrailStatus:
     """
     Run guardrail checks on a draft reply (output).
-    
+
     Args:
         reply: The draft reply to check
         kb_hits: KB passages that were available
         llm: LLM provider instance
-    
+
     Returns:
         GuardrailStatus with pass/fail and issues
     """
-    # Use mock provider's specialized method if available
-    if isinstance(llm, MockProvider):
-        return llm.mock_guardrail(reply, kb_hits)
-    
     # Run rule-based checks first
     rule_issues = _run_output_rule_checks(reply, kb_hits)
     
@@ -544,7 +536,7 @@ def _run_output_rule_checks(reply: ReplyDraft, kb_hits: list[KBHit]) -> list[str
 def _run_output_llm_checks(
     reply: ReplyDraft,
     kb_hits: list[KBHit],
-    llm: LLMProvider
+    llm: OpenAIProvider
 ) -> GuardrailStatus:
     """Run LLM-based semantic checks on output."""
     

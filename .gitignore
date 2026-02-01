@@ -31,3 +31,6 @@ Thumbs.db
 # ChromaDB data
 data/chroma_db/
 data/ticket_history/
+
+# Windows reserved device names
+nul

@@ -1,0 +1,69 @@
+{
+  "conversation_id": "conv-TKT-1769918335637",
+  "original_ticket_id": "TKT-1769918335637",
+  "customer_email": "bill@testcompany.com",
+  "customer_name": "bill",
+  "account_tier": "enterprise",
+  "product": "api platform",
+  "subject": "my api is running slowly",
+  "messages": [
+    {
+      "message_id": "TKT-1769918335637",
+      "timestamp": "2026-02-01T03:58:55.637000Z",
+      "sender_type": "customer",
+      "sender_id": "bill@testcompany.com",
+      "content": "Subject: my api is running slowly\n\nmy api is super slow rn",
+      "extracted_fields": {
+        "environment": null,
+        "region": null,
+        "error_message": null,
+        "reproduction_steps": null,
+        "impact": "API performance is slow",
+        "requested_action": null,
+        "order_id": null,
+        "missing_fields": [
+          "environment",
+          "region",
+          "requested_action"
+        ]
+      },
+      "is_auto_reply": false
+    }
+  ],
+  "status": "awaiting_customer",
+  "pending_fields": [
+    "environment",
+    "region",
+    "requested_action"
+  ],
+  "merged_extracted_fields": {
+    "environment": null,
+    "region": null,
+    "error_message": null,
+    "reproduction_steps": null,
+    "impact": "API performance is slow",
+    "requested_action": null,
+    "order_id": null,
+    "missing_fields": [
+      "environment",
+      "region",
+      "requested_action"
+    ]
+  },
+  "current_triage": {
+    "urgency": "P1",
+    "category": "bug",
+    "sentiment": "negative",
+    "confidence": 0.9,
+    "rationale": "The customer reports that their API is running slowly, indicating a significant issue that requires prompt attention."
+  },
+  "current_routing": {
+    "team": "engineering",
+    "sla_hours": 4,
+    "escalation": true,
+    "reasoning": "Routed to engineering due to bug classification. SLA set based on enterprise tier and P1 priority. Escalated per enterprise account policy."
+  },
+  "created_at": "2026-02-01T03:58:55.637000Z",
+  "updated_at": "2026-01-31T22:59:02.308600",
+  "resolved_at": null
+}

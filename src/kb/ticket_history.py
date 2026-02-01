@@ -1,57 +1,53 @@
 """
-Ticket history storage and similarity search for auto-reply functionality.
+Previous queries storage and similarity search for auto-reply functionality.
 Stores processed tickets and enables finding similar past tickets.
+This is part of the KB collections system - specifically the PREVIOUS_QUERIES collection.
 """
 
 from datetime import datetime
 from pathlib import Path
 import json
-import os
 
 from langchain_chroma import Chroma
 
 from ..schemas import SupportTicket, PipelineResult, ReplyDraft
 from .indexer import get_embeddings, get_chroma_path
+from .collections import KBCollection, get_collection_path, get_similarity_threshold
 
 
 class TicketHistoryStore:
     """
-    Stores processed tickets and enables similarity search for auto-reply.
+    Stores processed tickets in the PREVIOUS_QUERIES collection.
+    Enables similarity search for auto-reply functionality.
     """
 
     def __init__(
         self,
         persist_dir: str | Path | None = None,
-        use_mock: bool | None = None,
-        similarity_threshold: float = 0.8
+        similarity_threshold: float | None = None
     ):
         """
         Initialize the ticket history store.
 
         Args:
-            persist_dir: Path to ChromaDB persistence directory
-            use_mock: Use mock embeddings
-            similarity_threshold: Minimum similarity score for auto-reply (default 0.8)
+            persist_dir: Base path to ChromaDB persistence directory
+            similarity_threshold: Minimum similarity score for auto-reply (default from collection config)
         """
-        base_path = Path(persist_dir) if persist_dir else get_chroma_path()
-        self.persist_dir = base_path.parent / "ticket_history"
+        base_path = Path(persist_dir) if persist_dir else get_chroma_path().parent
+        self.persist_dir = get_collection_path(base_path, KBCollection.PREVIOUS_QUERIES)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
 
-        self.similarity_threshold = similarity_threshold
+        # Use collection default threshold if not specified
+        self.similarity_threshold = similarity_threshold or get_similarity_threshold(KBCollection.PREVIOUS_QUERIES)
 
-        # Auto-detect mock mode if not specified
-        if use_mock is None:
-            use_mock = not bool(os.getenv("OPENAI_API_KEY"))
-        self.use_mock = use_mock
+        # Initialize embeddings (uses OpenAI)
+        self.embeddings = get_embeddings()
 
-        # Initialize embeddings
-        self.embeddings = get_embeddings(use_mock=use_mock)
-
-        # Load vectorstore
+        # Load vectorstore with collection name from enum
         self.vectorstore = Chroma(
             persist_directory=str(self.persist_dir),
             embedding_function=self.embeddings,
-            collection_name="ticket_history"
+            collection_name=KBCollection.PREVIOUS_QUERIES.value
         )
 
     def add_ticket(
@@ -157,12 +153,9 @@ class TicketHistoryStore:
 _history_store: TicketHistoryStore | None = None
 
 
-def get_ticket_history(use_mock: bool | None = None) -> TicketHistoryStore:
+def get_ticket_history() -> TicketHistoryStore:
     """
     Get or create a singleton TicketHistoryStore instance.
-
-    Args:
-        use_mock: Use mock embeddings
 
     Returns:
         TicketHistoryStore instance
@@ -170,7 +163,7 @@ def get_ticket_history(use_mock: bool | None = None) -> TicketHistoryStore:
     global _history_store
 
     if _history_store is None:
-        _history_store = TicketHistoryStore(use_mock=use_mock)
+        _history_store = TicketHistoryStore()
 
     return _history_store
 

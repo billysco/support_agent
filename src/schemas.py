@@ -62,6 +62,9 @@ class SupportTicket(BaseModel):
     subject: str = Field(..., description="Ticket subject line")
     body: str = Field(..., description="Full ticket body text")
     attachments: Optional[list[str]] = Field(default=None, description="List of attachment URLs or filenames")
+    # Conversation threading fields
+    conversation_id: Optional[str] = Field(default=None, description="Link to existing conversation thread")
+    is_followup: bool = Field(default=False, description="Whether this is a follow-up message")
 
 
 class TriageResult(BaseModel):
@@ -140,6 +143,70 @@ class AutoReplyInfo(BaseModel):
     time_since_match_hours: Optional[float] = Field(default=None, description="Hours since the matched ticket was processed")
 
 
+class StatusUpdateInfo(BaseModel):
+    """Information about a relevant system status update."""
+    status_id: str = Field(..., description="Status update identifier")
+    title: str = Field(..., description="Status title")
+    status_type: str = Field(..., description="Type: outage, maintenance, degradation, resolved, announcement")
+    severity: str = Field(..., description="Severity: critical, high, medium, low, info")
+    affected_services: list[str] = Field(default_factory=list, description="Affected services")
+    description: str = Field(..., description="Status description")
+    is_active: bool = Field(default=True, description="Whether status is still active")
+    relevance_score: float = Field(default=0.0, description="Relevance to the ticket")
+
+
+class ConversationStatus(str, Enum):
+    """Status of a conversation thread."""
+    awaiting_customer = "awaiting_customer"  # Waiting for customer to provide more info
+    awaiting_agent = "awaiting_agent"        # Needs agent review
+    in_progress = "in_progress"              # Being actively worked on
+    resolved = "resolved"                     # Issue resolved
+    closed = "closed"                         # Conversation closed
+
+
+class ConversationMessage(BaseModel):
+    """A single message in a conversation thread."""
+    message_id: str = Field(..., description="Unique message identifier")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Message timestamp")
+    sender_type: str = Field(..., description="Sender type: customer, agent, or system")
+    sender_id: str = Field(..., description="Sender identifier (email or agent ID)")
+    content: str = Field(..., description="Message content")
+    extracted_fields: Optional[ExtractedFields] = Field(default=None, description="Fields extracted from this message")
+    is_auto_reply: bool = Field(default=False, description="Whether this was an auto-generated reply")
+
+
+class Conversation(BaseModel):
+    """A conversation thread linking multiple ticket interactions."""
+    conversation_id: str = Field(..., description="Unique conversation identifier")
+    original_ticket_id: str = Field(..., description="ID of the initial ticket")
+    customer_email: str = Field(..., description="Customer email for this conversation")
+    customer_name: str = Field(..., description="Customer name")
+    account_tier: AccountTier = Field(..., description="Customer account tier")
+    product: str = Field(..., description="Product this conversation is about")
+    subject: str = Field(..., description="Conversation subject (from original ticket)")
+    messages: list[ConversationMessage] = Field(default_factory=list, description="All messages in the conversation")
+    status: ConversationStatus = Field(default=ConversationStatus.in_progress, description="Current conversation status")
+    pending_fields: list[str] = Field(default_factory=list, description="Fields still needed from customer")
+    # Aggregated extraction from all messages
+    merged_extracted_fields: Optional[ExtractedFields] = Field(default=None, description="Merged fields from all messages")
+    # Triage info (may be updated as conversation progresses)
+    current_triage: Optional[TriageResult] = Field(default=None, description="Current triage classification")
+    current_routing: Optional[RoutingDecision] = Field(default=None, description="Current routing decision")
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.now, description="Conversation creation time")
+    updated_at: datetime = Field(default_factory=datetime.now, description="Last update time")
+    resolved_at: Optional[datetime] = Field(default=None, description="Resolution time if resolved")
+
+
+class ConversationInfo(BaseModel):
+    """Summary info about a conversation included in PipelineResult."""
+    conversation_id: str = Field(..., description="Conversation ID")
+    message_count: int = Field(default=1, description="Total messages in conversation")
+    is_followup: bool = Field(default=False, description="Whether this was a follow-up message")
+    pending_fields: list[str] = Field(default_factory=list, description="Fields still needed")
+    status: ConversationStatus = Field(default=ConversationStatus.in_progress, description="Conversation status")
+
+
 class PipelineResult(BaseModel):
     """Complete output from the support triage pipeline."""
     ticket_id: str = Field(..., description="Original ticket ID")
@@ -152,4 +219,18 @@ class PipelineResult(BaseModel):
     guardrail_status: GuardrailStatus = Field(..., description="Output guardrail check results")
     processing_mode: str = Field(default="mock", description="Whether processed in 'real' or 'mock' mode")
     auto_reply: AutoReplyInfo = Field(default_factory=AutoReplyInfo, description="Auto-reply information")
+    status_updates: list[StatusUpdateInfo] = Field(default_factory=list, description="Relevant system status updates")
+    # Conversation threading
+    conversation: Optional[ConversationInfo] = Field(default=None, description="Conversation thread information")
+
+
+class ApprovedResponse(BaseModel):
+    """An approved response to add to the KB for future use."""
+    ticket_id: str = Field(..., description="Original ticket ID this response is based on")
+    question_summary: str = Field(..., description="Generalized version of the customer question")
+    response: str = Field(..., description="The approved response text")
+    category: Category = Field(..., description="Category for the Q&A pair")
+    tags: list[str] = Field(default_factory=list, description="Searchable tags for this response")
+    approved_by: str = Field(..., description="Agent ID who approved this response")
+    approved_at: datetime = Field(default_factory=datetime.now, description="When the response was approved")
 

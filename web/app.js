@@ -911,7 +911,14 @@ async function handleCustomerFollowUp() {
     if (!replyText) return;
 
     const ticket = state.currentTicket;
-    if (!ticket) return;
+    const result = state.currentResult;
+    if (!ticket || !result) return;
+
+    // Get conversation ID from the result
+    const conversationId = result.conversation?.conversation_id;
+    console.log('[DEBUG] Current result:', result);
+    console.log('[DEBUG] Conversation info:', result.conversation);
+    console.log('[DEBUG] Conversation ID:', conversationId);
 
     // Disable input while processing
     elements.customerReplyInput.disabled = true;
@@ -924,33 +931,74 @@ async function handleCustomerFollowUp() {
     // Clear input
     elements.customerReplyInput.value = '';
 
-    // Create updated ticket with follow-up context
-    const followUpTicket = {
-        ...ticket,
-        ticket_id: ticket.ticket_id + '-followup-' + Date.now(),
-        body: `[FOLLOW-UP to ticket ${ticket.ticket_id}]\n\nOriginal issue: ${ticket.body}\n\nCustomer follow-up: ${replyText}`,
-        subject: `Re: ${ticket.subject}`
-    };
-
     try {
-        // Process follow-up through the pipeline
-        const response = await fetch('/api/process', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(followUpTicket)
-        });
+        let response;
 
-        if (!response.ok) {
-            throw new Error('Failed to process follow-up');
+        // Always construct conversation_id from original ticket
+        const originalTicketId = ticket.ticket_id.split('-followup-')[0]; // Get original ID
+        const convId = conversationId || `conv-${originalTicketId}`;
+
+        console.log('[DEBUG] Original ticket ID:', originalTicketId);
+        console.log('[DEBUG] Using conversation ID:', convId);
+
+        if (conversationId) {
+            // Use the conversation follow-up endpoint
+            const followUpData = {
+                ticket_id: originalTicketId + '-followup-' + Date.now(),
+                created_at: new Date().toISOString(),
+                body: replyText  // Just the follow-up text, not concatenated
+            };
+
+            console.log('[DEBUG] Sending to /api/conversations/' + convId + '/followup:', followUpData);
+
+            response = await fetch(`/api/conversations/${convId}/followup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(followUpData)
+            });
+        } else {
+            // Fallback: use /api/process with explicit conversation flags
+            // Don't use spread - construct explicitly to avoid stale data
+            const followUpTicket = {
+                ticket_id: originalTicketId + '-followup-' + Date.now(),
+                created_at: new Date().toISOString(),
+                customer_name: ticket.customer_name,
+                customer_email: ticket.customer_email,
+                account_tier: ticket.account_tier,
+                product: ticket.product,
+                subject: `Re: ${ticket.subject}`,
+                body: replyText,
+                attachments: null,
+                conversation_id: convId,
+                is_followup: true
+            };
+
+            console.log('[DEBUG] Sending to /api/process:', followUpTicket);
+
+            response = await fetch('/api/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(followUpTicket)
+            });
         }
 
-        const result = await response.json();
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Failed to process follow-up');
+        }
+
+        const newResult = await response.json();
 
         // Add agent's response to conversation
-        addFollowUpMessage('Support Agent', result.reply.customer_reply, 'agent', result.kb_hits);
+        addFollowUpMessage('Support Agent', newResult.reply.customer_reply, 'agent', newResult.kb_hits);
 
         // Update the current result for context
-        state.currentResult = result;
+        state.currentResult = newResult;
+
+        // Update extracted fields display with merged data
+        if (newResult.extracted_fields) {
+            displayExtractedFields(newResult.extracted_fields);
+        }
 
         showToast('Follow-up processed', 'success');
 

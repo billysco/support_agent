@@ -1,14 +1,20 @@
 """
 ChromaDB indexer with LangChain integration for the knowledge base.
+Supports multiple collections defined in collections.py.
 """
 
 import os
 import re
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+
+from .collections import KBCollection, get_collection_path
 
 
 def get_project_root() -> Path:
@@ -21,22 +27,23 @@ def get_kb_path() -> Path:
     return get_project_root() / "kb"
 
 
+def get_data_path() -> Path:
+    """Get the data directory path (base for all collections)."""
+    return get_project_root() / "data"
+
+
 def get_chroma_path() -> Path:
-    """Get the ChromaDB persistence directory path."""
-    return get_project_root() / "data" / "chroma_db"
+    """Get the ChromaDB persistence directory path for support_kb collection."""
+    return get_collection_path(get_data_path(), KBCollection.SUPPORT_KB)
 
 
-def get_embeddings(use_mock: bool = False):
+def get_embeddings():
     """
-    Get the appropriate embeddings model.
-    Uses FakeEmbeddings in mock mode for deterministic, offline operation.
+    Get the OpenAI embeddings model.
+    Requires OPENAI_API_KEY environment variable to be set.
     """
-    if use_mock:
-        from langchain_community.embeddings import FakeEmbeddings
-        return FakeEmbeddings(size=384)
-    else:
-        from langchain_openai import OpenAIEmbeddings
-        return OpenAIEmbeddings()
+    from langchain_openai import OpenAIEmbeddings
+    return OpenAIEmbeddings()
 
 
 def load_markdown_files(kb_path: Path) -> list[Document]:
@@ -141,83 +148,146 @@ def split_by_headers(documents: list[Document]) -> list[Document]:
 def build_kb_index(
     kb_path: str | Path | None = None,
     persist_dir: str | Path | None = None,
-    use_mock: bool = False,
     force_rebuild: bool = False
 ) -> Chroma:
     """
-    Build or load the ChromaDB index for the knowledge base.
-    
+    Build or load the ChromaDB index for the SUPPORT_KB collection.
+
     Args:
         kb_path: Path to knowledge base markdown files
         persist_dir: Path to persist ChromaDB data
-        use_mock: Use FakeEmbeddings for offline/demo mode
         force_rebuild: Force rebuild even if index exists
-    
+
     Returns:
         Chroma vectorstore instance
     """
     kb_path = Path(kb_path) if kb_path else get_kb_path()
     persist_dir = Path(persist_dir) if persist_dir else get_chroma_path()
-    
+
     # Ensure persist directory exists
     persist_dir.mkdir(parents=True, exist_ok=True)
-    
-    embeddings = get_embeddings(use_mock=use_mock)
-    
+
+    embeddings = get_embeddings()
+
     # Check if index already exists
     chroma_files = list(persist_dir.glob("*.sqlite3")) + list(persist_dir.glob("chroma.sqlite3"))
     index_exists = len(chroma_files) > 0
-    
+
     if index_exists and not force_rebuild:
         print(f"Loading existing KB index from {persist_dir}")
         return Chroma(
             persist_directory=str(persist_dir),
             embedding_function=embeddings,
-            collection_name="support_kb"
+            collection_name=KBCollection.SUPPORT_KB.value
         )
-    
+
     print(f"Building KB index from {kb_path}")
-    
+
     # Load and process documents
     documents = load_markdown_files(kb_path)
     print(f"Loaded {len(documents)} markdown files")
-    
+
     chunks = split_by_headers(documents)
     print(f"Created {len(chunks)} chunks")
-    
-    # Create vectorstore
+
+    # Create vectorstore for support_kb collection
     vectorstore = Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
         persist_directory=str(persist_dir),
-        collection_name="support_kb",
+        collection_name=KBCollection.SUPPORT_KB.value,
         collection_metadata={"hnsw:space": "cosine"}
     )
-    
+
     print(f"KB index built and persisted to {persist_dir}")
     return vectorstore
 
 
-def check_api_key() -> bool:
-    """Check if OpenAI API key is available."""
-    return bool(os.getenv("OPENAI_API_KEY"))
+def add_approved_response(
+    ticket_id: str,
+    question_summary: str,
+    response: str,
+    category: str,
+    tags: list[str],
+    approved_by: str,
+    approved_at: str,
+    persist_dir: str | Path | None = None
+) -> bool:
+    """
+    Add an approved response to the support_kb collection.
+
+    This allows high-quality responses to be indexed and searchable
+    for future similar tickets.
+
+    Args:
+        ticket_id: Original ticket ID
+        question_summary: Generalized version of the question
+        response: The approved response text
+        category: Category (billing, bug, outage, etc.)
+        tags: Searchable tags
+        approved_by: Agent ID who approved
+        approved_at: ISO timestamp of approval
+        persist_dir: Path to ChromaDB persistence directory
+
+    Returns:
+        True if successfully added
+    """
+    persist_dir = Path(persist_dir) if persist_dir else get_chroma_path()
+    embeddings = get_embeddings()
+
+    # Load existing vectorstore
+    vectorstore = Chroma(
+        persist_directory=str(persist_dir),
+        embedding_function=embeddings,
+        collection_name=KBCollection.SUPPORT_KB.value
+    )
+
+    # Format as Q&A document
+    content = f"""## {question_summary}
+
+**Category**: {category}
+**Tags**: {', '.join(tags)}
+
+### Answer
+
+{response}
+"""
+
+    # Create document with metadata
+    doc = Document(
+        page_content=content,
+        metadata={
+            "source": "approved_responses",
+            "section": category.lower().replace(" ", "-"),
+            "ticket_id": ticket_id,
+            "tags": ",".join(tags),
+            "approved_by": approved_by,
+            "approved_at": approved_at,
+            "h2": question_summary,
+            "h3": "Answer"
+        }
+    )
+
+    # Add to vectorstore
+    vectorstore.add_documents([doc])
+    print(f"Added approved response from ticket {ticket_id} to KB")
+
+    return True
 
 
 # CLI entry point for building index
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Build knowledge base index")
-    parser.add_argument("--mock", action="store_true", help="Use mock embeddings")
     parser.add_argument("--force", action="store_true", help="Force rebuild index")
     args = parser.parse_args()
-    
-    use_mock = args.mock or not check_api_key()
-    
-    if use_mock and not args.mock:
-        print("Note: OPENAI_API_KEY not set, using mock embeddings")
-    
-    build_kb_index(use_mock=use_mock, force_rebuild=args.force)
+
+    if not os.getenv("OPENAI_API_KEY"):
+        print("Error: OPENAI_API_KEY environment variable is required")
+        exit(1)
+
+    build_kb_index(force_rebuild=args.force)
     print("Done!")
 
 

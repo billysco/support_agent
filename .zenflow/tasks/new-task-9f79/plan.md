@@ -55,7 +55,7 @@ Save to `{@artifacts_path}/plan.md`.
 
 ## Implementation Tasks
 
-### [ ] Step: Backend Data Models and Schemas
+### [x] Step: Backend Data Models and Schemas
 <!-- chat-id: 7c8e4d83-b6c9-472f-b88e-c75564459a17 -->
 
 Create the monitoring data models as defined in spec.md section 2.1.4.

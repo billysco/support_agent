@@ -132,6 +132,7 @@ Implement log event generator as defined in spec.md section 2.1.1.
 - Test thread safety with rapid start/stop
 
 ### [ ] Step: Monitoring API Endpoints
+<!-- chat-id: 727ff9c6-01ec-43d3-8a1d-183a63d227ca -->
 
 Add monitoring API endpoints to server as defined in spec.md section 2.1.6.
 

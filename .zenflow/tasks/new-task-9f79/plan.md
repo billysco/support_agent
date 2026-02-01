@@ -99,7 +99,8 @@ Implement threshold monitoring system as defined in spec.md section 2.1.2.
 - Test 3 consecutive anomalous events → flagged=True, critical=True
 - Verify rolling baseline tracks per service correctly
 
-### [ ] Step: Event Generator Implementation
+### [x] Step: Event Generator Implementation
+<!-- chat-id: 9421077a-f869-4faa-830c-f64d8261eca9 -->
 
 Implement log event generator as defined in spec.md section 2.1.1.
 

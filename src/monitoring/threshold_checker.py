@@ -96,14 +96,11 @@ class ThresholdChecker:
                 result.threshold_value = threshold_value
                 result.baseline_value = baseline_avg
                 
-                baseline.consecutive_violations += 1
-                
-                if baseline.consecutive_violations >= 3:
-                    result.critical = True
+                # Mark as critical immediately when threshold exceeded
+                # (Previously required 3 consecutive violations)
+                result.critical = True
                 
                 break
-            else:
-                baseline.consecutive_violations = 0
             
             baseline.add_value(actual_value)
         

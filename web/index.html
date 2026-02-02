@@ -43,6 +43,12 @@
                     </svg>
                     <span>New Ticket</span>
                 </button>
+                <button class="nav-item" data-view="monitoring">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                    </svg>
+                    <span>Monitoring</span>
+                </button>
                 <button class="nav-item" data-view="kb">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
@@ -360,6 +366,117 @@
                             </div>
                         </div>
                     </aside>
+                </div>
+            </section>
+
+            <!-- Monitoring View -->
+            <section class="view view-monitoring" id="viewMonitoring">
+                <header class="view-header">
+                    <div class="view-title">
+                        <h1>Log Monitoring</h1>
+                        <span class="view-subtitle">AI-powered anomaly detection</span>
+                    </div>
+                    <div class="monitoring-controls">
+                        <button class="btn btn-secondary" id="clearLogs">Clear Logs</button>
+                        <button class="btn btn-primary" id="toggleMonitoring">
+                            <span class="status-indicator" id="monitoringStatusDot"></span>
+                            <span class="toggle-text" id="toggleText">Start</span>
+                        </button>
+                    </div>
+                </header>
+                
+                <!-- Threshold Info Panel -->
+                <div class="threshold-info" id="thresholdInfo">
+                    <button class="threshold-toggle" id="thresholdToggle">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                        <span>Thresholds</span>
+                        <span class="threshold-arrow">&#9660;</span>
+                    </button>
+                    <div class="threshold-content" id="thresholdContent">
+                        <table class="threshold-table">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Normal</th>
+                                    <th>Alert Threshold</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>API Latency</td>
+                                    <td>&lt; 200ms</td>
+                                    <td>&gt; 500ms</td>
+                                </tr>
+                                <tr>
+                                    <td>DB Query Time</td>
+                                    <td>&lt; 100ms</td>
+                                    <td>&gt; 300ms</td>
+                                </tr>
+                                <tr>
+                                    <td>Frontend Load</td>
+                                    <td>&lt; 2s</td>
+                                    <td>&gt; 5s</td>
+                                </tr>
+                                <tr>
+                                    <td>CPU Usage</td>
+                                    <td>&lt; 70%</td>
+                                    <td>&gt; 90%</td>
+                                </tr>
+                                <tr>
+                                    <td>Memory Usage</td>
+                                    <td>&lt; 80%</td>
+                                    <td>&gt; 95%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="threshold-note">Events exceeding thresholds are flagged. 3 consecutive violations trigger critical status.</p>
+                    </div>
+                </div>
+                
+                <div class="monitoring-layout">
+                    <!-- Left: Log Stream (60%) -->
+                    <div class="log-stream">
+                        <div class="stream-header">
+                            <h3>Event Stream</h3>
+                            <span class="event-count" id="eventCount">0 events</span>
+                        </div>
+                        <div class="event-list" id="eventList">
+                            <div class="empty-events" id="emptyEvents">
+                                <div class="empty-events-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                                    </svg>
+                                </div>
+                                <p>No events yet. Click "Start" to begin monitoring.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right: AI Actions (40%) -->
+                    <div class="ai-actions">
+                        <div class="action-tabs">
+                            <button class="action-tab active" data-tab="issues">Issues & KB</button>
+                            <button class="action-tab" data-tab="alerts">Alerts</button>
+                        </div>
+                        <div class="action-content">
+                            <div class="action-panel active" id="issuesPanel">
+                                <div class="empty-actions" id="emptyIssues">
+                                    <p>No AI-generated issues yet. Issues will appear when anomalies are detected.</p>
+                                </div>
+                                <div class="issues-list" id="issuesList"></div>
+                            </div>
+                            <div class="action-panel" id="alertsPanel">
+                                <div class="empty-actions" id="emptyAlerts">
+                                    <p>No alerts yet. Engineering and customer alerts will appear here.</p>
+                                </div>
+                                <div class="alerts-list" id="alertsList"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 

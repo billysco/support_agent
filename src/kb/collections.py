@@ -12,6 +12,7 @@ class KBCollection(str, Enum):
     SUPPORT_KB = "support_kb"           # Static KB docs (procedures, policies, etc.)
     PREVIOUS_QUERIES = "previous_queries"  # Processed tickets for auto-reply
     STATUS_UPDATES = "status_updates"      # System status, outages, announcements
+    MONITORING_ISSUES = "monitoring_issues"  # AI-generated monitoring issues
 
 
 # Collection metadata configurations
@@ -30,6 +31,11 @@ COLLECTION_CONFIGS = {
         "description": "System status updates, outages, and announcements",
         "persist_subdir": "status_updates",
         "similarity_threshold": 0.5,
+    },
+    KBCollection.MONITORING_ISSUES: {
+        "description": "AI-generated issues from monitoring system",
+        "persist_subdir": "monitoring_issues",
+        "similarity_threshold": 0.85,
     },
 }
 

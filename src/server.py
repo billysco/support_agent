@@ -36,8 +36,9 @@ from .pipeline.reply import (
     generate_followup_request, draft_reply_with_context
 )
 from .pipeline.guardrail import check_guardrails, check_input_guardrails, sanitize_input
-from .monitoring.event_generator import LogEventGenerator
+from .monitoring.event_generator import LogEventGenerator, create_critical_api_event
 from .monitoring.threshold_checker import ThresholdChecker
+from .monitoring.ai_agent import MonitoringAIAgent
 from .monitoring.schemas import LogEvent, AIIssue, AIAlert
 
 
@@ -58,29 +59,6 @@ def get_kb_path() -> Path:
     return get_project_root() / "kb"
 
 
-def load_sample_tickets() -> list[SupportTicket]:
-    """Load sample tickets from the data directory."""
-    data_path = get_data_path() / "sample_tickets.json"
-    
-    with open(data_path, "r", encoding="utf-8") as f:
-        tickets_data = json.load(f)
-    
-    tickets = []
-    for data in tickets_data:
-        # Parse datetime
-        if isinstance(data.get("created_at"), str):
-            data["created_at"] = datetime.fromisoformat(
-                data["created_at"].replace("Z", "+00:00")
-            )
-        # Parse account tier
-        if isinstance(data.get("account_tier"), str):
-            data["account_tier"] = AccountTier(data["account_tier"])
-        
-        tickets.append(SupportTicket(**data))
-    
-    return tickets
-
-
 # Initialize FastAPI app
 app = FastAPI(
     title="Support Triage System",
@@ -97,6 +75,7 @@ _conversation_store = None
 
 # Monitoring state
 import threading
+import queue
 _monitoring_lock = threading.Lock()
 _monitoring_state = {
     "running": False,
@@ -105,8 +84,45 @@ _monitoring_state = {
     "ai_agent": None,
     "events": [],
     "issues": [],
-    "alerts": []
+    "alerts": [],
+    "tickets": [],
+    # Demo mode: pre-fetched AI data for instant display
+    "critical_event": None,
+    "prefetched_issue": None,
+    "prefetched_alerts": None,
 }
+
+
+def _prefetch_ai_for_critical_event(critical_event: "LogEvent", generator: "LogEventGenerator"):
+    """Pre-fetch AI analysis for the critical event before it appears in stream."""
+    print("[Monitoring] Starting AI pre-fetch for critical event...")
+
+    try:
+        with _monitoring_lock:
+            ai_agent = _monitoring_state["ai_agent"]
+
+        if not ai_agent:
+            print("[Monitoring] No AI agent for pre-fetch")
+            generator.set_ai_ready()
+            return
+
+        # Call AI agent to analyze the critical event
+        issue, alerts = ai_agent.analyze_flagged_event(critical_event, [critical_event])
+
+        with _monitoring_lock:
+            # Store pre-computed results
+            _monitoring_state["prefetched_issue"] = issue
+            _monitoring_state["prefetched_alerts"] = alerts
+            print(f"[Monitoring] AI pre-fetch complete: issue={issue is not None}, alerts={len(alerts) if alerts else 0}")
+
+    except Exception as e:
+        print(f"[Monitoring] AI pre-fetch failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Signal generator that AI is ready - critical event can now appear
+    generator.set_ai_ready()
+    print("[Monitoring] Signaled generator: AI ready")
 
 
 def get_llm():
@@ -529,21 +545,6 @@ This ticket was flagged by automated security systems and requires human review.
 async def get_mode():
     """Get the current processing mode."""
     return {"mode": "real"}
-
-
-@app.get("/api/samples")
-async def get_samples():
-    """Get sample tickets for the demo."""
-    samples_path = get_data_path() / "sample_tickets.json"
-    
-    try:
-        with open(samples_path, "r", encoding="utf-8") as f:
-            samples = json.load(f)
-        return JSONResponse(content=samples)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Sample tickets not found")
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Invalid sample tickets file")
 
 
 @app.post("/api/process", response_model=PipelineResult)
@@ -1119,29 +1120,67 @@ async def add_known_issue(issue_data: dict):
 # Monitoring API Endpoints
 @app.post("/api/monitoring/start")
 async def start_monitoring():
-    """Initialize and start the monitoring system."""
+    """Initialize and start the monitoring system in demo mode."""
     global _monitoring_state
-    
+
     with _monitoring_lock:
         if _monitoring_state["running"]:
             raise HTTPException(status_code=400, detail="Monitoring is already running")
-        
+
         try:
-            generator = LogEventGenerator(event_interval=2.0)
-            threshold_checker = ThresholdChecker()
-            
-            generator.start()
-            
-            _monitoring_state["running"] = True
-            _monitoring_state["generator"] = generator
-            _monitoring_state["threshold_checker"] = threshold_checker
+            # Clear previous demo data
             _monitoring_state["events"] = []
             _monitoring_state["issues"] = []
             _monitoring_state["alerts"] = []
-            
+            _monitoring_state["tickets"] = []
+            _monitoring_state["prefetched_issue"] = None
+            _monitoring_state["prefetched_alerts"] = None
+
+            # Create generator in demo mode (10 events, auto-stop)
+            generator = LogEventGenerator(event_interval=2.0, demo_mode=True)
+            threshold_checker = ThresholdChecker()
+
+            # Initialize AI agent
+            llm = get_llm()
+            retriever = get_kb_retriever()
+            ai_agent = MonitoringAIAgent(llm, retriever)
+
+            # Create the critical event upfront (will be event #4)
+            critical_event = create_critical_api_event()
+            generator.set_critical_event(critical_event)
+            _monitoring_state["critical_event"] = critical_event
+
+            # Set up completion callback to mark as stopped
+            def on_demo_complete():
+                with _monitoring_lock:
+                    # Preserve events
+                    if _monitoring_state["generator"]:
+                        _monitoring_state["events"] = _monitoring_state["generator"].get_events()
+                    _monitoring_state["running"] = False
+                    print("[Monitoring] Demo auto-completed")
+
+            generator.set_on_complete(on_demo_complete)
+
+            # Update state before starting threads
+            _monitoring_state["running"] = True
+            _monitoring_state["generator"] = generator
+            _monitoring_state["threshold_checker"] = threshold_checker
+            _monitoring_state["ai_agent"] = ai_agent
+
+            # Start AI pre-fetch in background (will signal generator when ready)
+            prefetch_thread = threading.Thread(
+                target=_prefetch_ai_for_critical_event,
+                args=(critical_event, generator),
+                daemon=True
+            )
+            prefetch_thread.start()
+
+            # Start generator (will pause before event 4 until AI is ready)
+            generator.start()
+
             return {
                 "success": True,
-                "message": "Monitoring started successfully",
+                "message": "Demo monitoring started (10 events, auto-stop)",
                 "running": True
             }
         except Exception as e:
@@ -1152,20 +1191,25 @@ async def start_monitoring():
 async def stop_monitoring():
     """Stop the monitoring system gracefully."""
     global _monitoring_state
-    
+
     with _monitoring_lock:
         if not _monitoring_state["running"]:
             raise HTTPException(status_code=400, detail="Monitoring is not running")
-        
+
         try:
+            # Preserve events before stopping generator
             generator = _monitoring_state["generator"]
             if generator:
+                events = generator.get_events(limit=None)
+                _monitoring_state["events"] = events
                 generator.stop()
-            
+
             _monitoring_state["running"] = False
             _monitoring_state["generator"] = None
             _monitoring_state["threshold_checker"] = None
-            
+            _monitoring_state["ai_agent"] = None
+            # NOTE: events, issues, alerts, tickets are preserved until next start
+
             return {
                 "success": True,
                 "message": "Monitoring stopped successfully",
@@ -1193,26 +1237,104 @@ async def get_monitoring_events(limit: int = 50):
     """Get recent events sorted by timestamp descending."""
     with _monitoring_lock:
         generator = _monitoring_state["generator"]
-        threshold_checker = _monitoring_state["threshold_checker"]
-        
+
+        # If stopped, return persisted events
         if not generator:
-            return []
-        
+            events = _monitoring_state["events"]
+            if limit:
+                events = events[:limit]
+            return [event.model_dump(mode='json') for event in events]
+
         events = generator.get_events(limit=None)
-        
-        if threshold_checker:
-            for event in events:
-                if not event.flagged and not event.critical:
-                    result = threshold_checker.check_event(event)
-                    event.flagged = result.flagged
-                    event.critical = result.critical
-        
+
+        # Check if critical event has appeared and we have pre-fetched AI data
+        critical_event = _monitoring_state.get("critical_event")
+        prefetched_issue = _monitoring_state.get("prefetched_issue")
+
+        if critical_event and prefetched_issue:
+            # Check if critical event is in current events
+            critical_in_stream = any(e.event_id == critical_event.event_id for e in events)
+
+            if critical_in_stream and prefetched_issue not in _monitoring_state["issues"]:
+                # Inject pre-fetched issue, alerts, and create ticket NOW
+                print(f"[Monitoring] Critical event in stream - injecting pre-fetched data")
+
+                _monitoring_state["issues"].append(prefetched_issue)
+
+                prefetched_alerts = _monitoring_state.get("prefetched_alerts") or []
+                if prefetched_alerts:
+                    _monitoring_state["alerts"].extend(prefetched_alerts)
+
+                # Create ticket immediately
+                _create_monitoring_ticket(critical_event, prefetched_issue, prefetched_alerts)
+                print(f"[Monitoring] Created ticket for critical event")
+
         _monitoring_state["events"] = events
-        
+
         if limit:
             events = events[:limit]
-        
+
         return [event.model_dump(mode='json') for event in events]
+
+
+def _create_monitoring_ticket(event: LogEvent, issue: AIIssue, alerts: list[AIAlert]) -> None:
+    """Create a support ticket for critical monitoring issues."""
+    from datetime import datetime
+    import json
+    
+    try:
+        ticket_id = f"MON-{int(datetime.now().timestamp())}-{event.service_name}"
+        
+        ticket = SupportTicket(
+            ticket_id=ticket_id,
+            customer_name="System Monitor",
+            customer_email="monitor@system.internal",
+            account_tier=AccountTier.enterprise,
+            product=event.service_name,
+            subject=f"Critical issue: {issue.title}",
+            body=f"""Automated detection from monitoring system:
+
+{issue.description}
+
+Service: {event.service_name}
+Region: {event.region}
+Severity: {issue.severity}
+Event Type: {event.event_type.value}
+
+Metrics:
+{json.dumps(event.metrics, indent=2)}
+
+{f"Workaround: {issue.workaround}" if issue.workaround else "No workaround available yet."}
+
+This ticket was auto-generated by the AI monitoring system."""
+        )
+        
+        llm = get_llm()
+        retriever = get_kb_retriever()
+        ticket_history = get_history()
+        status_store = get_status()
+        conversation_store = get_conversations()
+        
+        result = process_ticket(ticket, llm, retriever, ticket_history, status_store, conversation_store)
+        
+        # Store ticket in monitoring state for frontend access
+        ticket_entry = {
+            "ticket": ticket.model_dump(mode='json'),
+            "result": result.model_dump(mode='json'),
+            "auto_generated": True,
+            "issue_id": issue.issue_id
+        }
+        _monitoring_state["tickets"].append(ticket_entry)
+        
+        # Update alerts with ticket ID
+        for alert in alerts:
+            if alert.alert_type == "customer":
+                alert.related_ticket_id = ticket_id
+                
+        print(f"[Monitoring] Created ticket {ticket_id} for critical issue {issue.issue_id}")
+        
+    except Exception as e:
+        print(f"[Monitoring] Failed to create ticket: {e}")
 
 
 @app.get("/api/monitoring/flagged")
@@ -1238,17 +1360,33 @@ async def get_ai_actions():
         }
 
 
+@app.get("/api/monitoring/tickets")
+async def get_monitoring_tickets():
+    """Get auto-generated monitoring tickets."""
+    with _monitoring_lock:
+        return _monitoring_state["tickets"]
+
+
 @app.post("/api/monitoring/clear")
 async def clear_monitoring_data():
-    """Clear all monitoring events, issues, and alerts."""
+    """Clear all monitoring events, issues, alerts, and tickets."""
     with _monitoring_lock:
         generator = _monitoring_state["generator"]
         if generator:
             generator.clear_events()
         
+        ai_agent = _monitoring_state["ai_agent"]
+        if ai_agent:
+            ai_agent.clear_processed_events()
+        
+        # Reset threshold checker to clear consecutive violation tracking
+        if _monitoring_state["running"]:
+            _monitoring_state["threshold_checker"] = ThresholdChecker()
+        
         _monitoring_state["events"] = []
         _monitoring_state["issues"] = []
         _monitoring_state["alerts"] = []
+        _monitoring_state["tickets"] = []
         
         return {
             "success": True,

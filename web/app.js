@@ -11,6 +11,17 @@ const state = {
     kbSearchTimeout: null
 };
 
+// Monitoring state
+const monitoringState = {
+    running: false,
+    events: [],
+    issues: [],
+    alerts: [],
+    pollInterval: null,
+    autoScroll: true,
+    lastEventId: null
+};
+
 // DOM Elements
 const elements = {
     // Navigation
@@ -116,6 +127,25 @@ const elements = {
     issueDescription: document.getElementById('issueDescription'),
     issueWorkaround: document.getElementById('issueWorkaround'),
     
+    // Monitoring view
+    viewMonitoring: document.getElementById('viewMonitoring'),
+    toggleMonitoring: document.getElementById('toggleMonitoring'),
+    toggleText: document.getElementById('toggleText'),
+    monitoringStatusDot: document.getElementById('monitoringStatusDot'),
+    clearLogs: document.getElementById('clearLogs'),
+    thresholdToggle: document.getElementById('thresholdToggle'),
+    thresholdContent: document.getElementById('thresholdContent'),
+    eventList: document.getElementById('eventList'),
+    eventCount: document.getElementById('eventCount'),
+    emptyEvents: document.getElementById('emptyEvents'),
+    issuesPanel: document.getElementById('issuesPanel'),
+    alertsPanel: document.getElementById('alertsPanel'),
+    issuesList: document.getElementById('issuesList'),
+    alertsList: document.getElementById('alertsList'),
+    emptyIssues: document.getElementById('emptyIssues'),
+    emptyAlerts: document.getElementById('emptyAlerts'),
+    actionTabs: document.querySelectorAll('.action-tab'),
+    
     // Toast
     toast: document.getElementById('toast')
 };
@@ -128,8 +158,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initDetailView();
     initKbView();
     initAdminView();
+    initMonitoringView();
     checkMode();
-    loadSampleTickets();
+    // Tickets come from user submissions and AI monitoring - no sample data needed
+    updateTicketsList();
 });
 
 // Navigation
@@ -171,6 +203,10 @@ function switchView(viewName) {
         case 'admin':
             elements.viewAdmin.classList.add('active');
             break;
+        case 'monitoring':
+            elements.viewMonitoring.classList.add('active');
+            checkMonitoringStatus();
+            break;
     }
 }
 
@@ -202,8 +238,33 @@ function initTicketsList() {
     elements.emptyCreateBtn.addEventListener('click', () => switchView('create'));
 }
 
-function updateTicketsList() {
-    const count = state.tickets.length;
+async function updateTicketsList() {
+    // Fetch monitoring-generated tickets
+    let monitoringTickets = [];
+    try {
+        const response = await fetch('/api/monitoring/tickets');
+        if (response.ok) {
+            const data = await response.json();
+            monitoringTickets = data.map(item => ({
+                ...item.ticket,
+                result: item.result,
+                auto_generated: true,
+                issue_id: item.issue_id
+            }));
+        }
+    } catch (error) {
+        console.error('Failed to fetch monitoring tickets:', error);
+    }
+    
+    // Merge with user tickets (avoid duplicates)
+    const userTicketIds = new Set(state.tickets.map(t => t.ticket_id));
+    const newMonitoringTickets = monitoringTickets.filter(t => !userTicketIds.has(t.ticket_id));
+    const allTickets = [...state.tickets, ...newMonitoringTickets];
+    
+    // Sort by created_at descending
+    allTickets.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    
+    const count = allTickets.length;
     elements.ticketCount.textContent = `${count} ticket${count !== 1 ? 's' : ''}`;
     
     if (count === 0) {
@@ -213,13 +274,22 @@ function updateTicketsList() {
     }
     
     elements.emptyState.classList.remove('visible');
-    elements.ticketsList.innerHTML = state.tickets.map(ticket => createTicketCard(ticket)).join('');
+    elements.ticketsList.innerHTML = allTickets.map(ticket => createTicketCard(ticket)).join('');
     
     // Add click handlers
     elements.ticketsList.querySelectorAll('.ticket-card').forEach(card => {
         card.addEventListener('click', () => {
             const ticketId = card.dataset.ticketId;
-            openTicketDetail(ticketId);
+            // Check if it's a monitoring ticket
+            const monitoringTicket = monitoringTickets.find(t => t.ticket_id === ticketId);
+            if (monitoringTicket) {
+                state.currentTicket = monitoringTicket;
+                state.currentResult = monitoringTicket.result;
+                displayTicketDetail();
+                switchView('detail');
+            } else {
+                openTicketDetail(ticketId);
+            }
         });
     });
 }
@@ -228,11 +298,12 @@ function createTicketCard(ticket) {
     const initials = getInitials(ticket.customer_name);
     const urgencyClass = ticket.result?.triage?.urgency?.toLowerCase() || '';
     const sentimentClass = ticket.result?.triage?.sentiment?.toLowerCase() || '';
+    const isAutoGenerated = ticket.auto_generated || ticket.ticket_id?.startsWith('MON-');
     
     return `
-        <div class="ticket-card" data-ticket-id="${ticket.ticket_id}">
+        <div class="ticket-card ${isAutoGenerated ? 'auto-generated' : ''}" data-ticket-id="${ticket.ticket_id}">
             <div class="ticket-card-header">
-                <div class="avatar">${initials}</div>
+                <div class="avatar ${isAutoGenerated ? 'avatar-monitoring' : ''}">${isAutoGenerated ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>' : initials}</div>
                 <div class="ticket-card-info">
                     <div class="ticket-card-subject">${escapeHtml(ticket.subject)}</div>
                     <div class="ticket-card-meta">
@@ -243,6 +314,7 @@ function createTicketCard(ticket) {
             </div>
             <div class="ticket-card-preview">${escapeHtml(truncate(ticket.body, 120))}</div>
             <div class="ticket-card-badges">
+                ${isAutoGenerated ? '<span class="badge badge-monitoring">AI Monitoring</span>' : ''}
                 ${ticket.result ? `
                     ${ticket.result.auto_reply?.is_auto_reply ? '<span class="badge badge-auto-reply">Auto-Reply</span>' : ''}
                     <span class="badge badge-urgency ${urgencyClass}">${ticket.result.triage.urgency}</span>
@@ -252,27 +324,6 @@ function createTicketCard(ticket) {
             </div>
         </div>
     `;
-}
-
-// Load sample tickets for demo
-async function loadSampleTickets() {
-    try {
-        const response = await fetch('/api/samples');
-        if (response.ok) {
-            const samples = await response.json();
-            // Add first sample as a demo ticket
-            if (samples.length > 0) {
-                const demoTicket = {
-                    ...samples[0],
-                    result: null
-                };
-                state.tickets = [demoTicket];
-                updateTicketsList();
-            }
-        }
-    } catch (error) {
-        console.error('Failed to load samples:', error);
-    }
 }
 
 // Create Form
@@ -1300,4 +1351,393 @@ function formatSla(hours) {
 function capitalizeFirst(str) {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).replace(/_/g, ' ');
+}
+
+// ============================================
+// Monitoring View
+// ============================================
+
+function initMonitoringView() {
+    // Toggle monitoring start/stop
+    elements.toggleMonitoring.addEventListener('click', toggleMonitoring);
+    
+    // Clear logs button
+    elements.clearLogs.addEventListener('click', clearMonitoringLogs);
+    
+    // Threshold panel toggle
+    elements.thresholdToggle.addEventListener('click', toggleThresholdPanel);
+    
+    // Action tabs (Issues & KB / Alerts)
+    elements.actionTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.tab;
+            switchActionTab(tabName);
+        });
+    });
+}
+
+async function checkMonitoringStatus() {
+    try {
+        const response = await fetch('/api/monitoring/status');
+        if (response.ok) {
+            const data = await response.json();
+            monitoringState.running = data.running;
+            updateMonitoringUI();
+            
+            if (data.running) {
+                startPolling();
+            }
+        }
+    } catch (error) {
+        console.error('Failed to check monitoring status:', error);
+    }
+}
+
+async function toggleMonitoring() {
+    const endpoint = monitoringState.running ? '/api/monitoring/stop' : '/api/monitoring/start';
+    
+    elements.toggleMonitoring.disabled = true;
+    
+    try {
+        const response = await fetch(endpoint, { method: 'POST' });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to toggle monitoring');
+        }
+        
+        const data = await response.json();
+        monitoringState.running = data.running;
+        
+        if (monitoringState.running) {
+            startPolling();
+            showToast('Monitoring started', 'success');
+        } else {
+            stopPolling();
+            showToast('Monitoring stopped', 'info');
+        }
+        
+        updateMonitoringUI();
+        
+    } catch (error) {
+        showToast(`Error: ${error.message}`, 'error');
+    } finally {
+        elements.toggleMonitoring.disabled = false;
+    }
+}
+
+async function clearMonitoringLogs() {
+    try {
+        const response = await fetch('/api/monitoring/clear', { method: 'POST' });
+        
+        if (!response.ok) {
+            throw new Error('Failed to clear logs');
+        }
+        
+        // Clear local state
+        monitoringState.events = [];
+        monitoringState.issues = [];
+        monitoringState.alerts = [];
+        monitoringState.lastEventId = null;
+        
+        // Update UI
+        renderEventList();
+        renderIssuesList();
+        renderAlertsList();
+        
+        showToast('Logs cleared', 'success');
+        
+    } catch (error) {
+        showToast(`Error: ${error.message}`, 'error');
+    }
+}
+
+function toggleThresholdPanel() {
+    const content = elements.thresholdContent;
+    const toggle = elements.thresholdToggle;
+    
+    content.classList.toggle('expanded');
+    toggle.classList.toggle('expanded');
+}
+
+function switchActionTab(tabName) {
+    elements.actionTabs.forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+    
+    elements.issuesPanel.classList.toggle('active', tabName === 'issues');
+    elements.alertsPanel.classList.toggle('active', tabName === 'alerts');
+}
+
+function updateMonitoringUI() {
+    const isRunning = monitoringState.running;
+    
+    elements.toggleText.textContent = isRunning ? 'Stop' : 'Start';
+    elements.monitoringStatusDot.classList.toggle('running', isRunning);
+    elements.toggleMonitoring.classList.toggle('running', isRunning);
+}
+
+function startPolling() {
+    if (monitoringState.pollInterval) return;
+    
+    // Poll immediately
+    pollMonitoringData();
+    
+    // Then poll every 2 seconds
+    monitoringState.pollInterval = setInterval(pollMonitoringData, 2000);
+}
+
+function stopPolling() {
+    if (monitoringState.pollInterval) {
+        clearInterval(monitoringState.pollInterval);
+        monitoringState.pollInterval = null;
+    }
+}
+
+async function pollMonitoringData() {
+    try {
+        // Fetch events, AI actions, and status in parallel
+        const [eventsResponse, actionsResponse, statusResponse] = await Promise.all([
+            fetch('/api/monitoring/events?limit=50'),
+            fetch('/api/monitoring/ai-actions'),
+            fetch('/api/monitoring/status')
+        ]);
+
+        if (eventsResponse.ok) {
+            const events = await eventsResponse.json();
+            updateEvents(events);
+        }
+
+        if (actionsResponse.ok) {
+            const actions = await actionsResponse.json();
+            updateAIActions(actions);
+        }
+
+        // Check if demo auto-completed (server set running=false)
+        if (statusResponse.ok) {
+            const status = await statusResponse.json();
+            if (!status.running && monitoringState.running) {
+                // Demo auto-completed
+                monitoringState.running = false;
+                updateMonitoringUI();
+                stopPolling();
+                showToast('Demo completed (10 events)', 'success');
+            }
+        }
+
+    } catch (error) {
+        console.error('Polling failed:', error);
+    }
+}
+
+function updateEvents(newEvents) {
+    // Check if we have new events
+    const hasNewEvents = newEvents.length > 0 &&
+        (!monitoringState.lastEventId || newEvents[0].event_id !== monitoringState.lastEventId);
+
+    // Only update if there are changes (reduces blinking)
+    if (!hasNewEvents && monitoringState.events.length === newEvents.length) {
+        return;
+    }
+
+    monitoringState.events = newEvents;
+
+    if (newEvents.length > 0) {
+        monitoringState.lastEventId = newEvents[0].event_id;
+    }
+
+    renderEventList(hasNewEvents);
+}
+
+function updateAIActions(actions) {
+    const hadIssues = monitoringState.issues.length;
+    const hadAlerts = monitoringState.alerts.length;
+    
+    monitoringState.issues = actions.issues || [];
+    monitoringState.alerts = actions.alerts || [];
+    
+    // Only re-render if there are changes
+    if (monitoringState.issues.length !== hadIssues) {
+        renderIssuesList();
+    }
+    
+    if (monitoringState.alerts.length !== hadAlerts) {
+        renderAlertsList();
+    }
+}
+
+function renderEventList(scrollToTop = false) {
+    const events = monitoringState.events;
+    
+    // Update count
+    elements.eventCount.textContent = `${events.length} event${events.length !== 1 ? 's' : ''}`;
+    
+    // Show/hide empty state
+    if (events.length === 0) {
+        elements.emptyEvents.style.display = 'flex';
+        elements.eventList.innerHTML = '';
+        elements.eventList.appendChild(elements.emptyEvents);
+        return;
+    }
+    
+    elements.emptyEvents.style.display = 'none';
+    
+    // Render event cards
+    const html = events.map((event, index) => renderEventCard(event, index === 0 && scrollToTop)).join('');
+    elements.eventList.innerHTML = html;
+    
+    // Scroll to top if new events
+    if (scrollToTop && monitoringState.autoScroll) {
+        elements.eventList.scrollTop = 0;
+    }
+}
+
+function renderEventCard(event, isNew = false) {
+    const typeIcons = {
+        api: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
+        database: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>',
+        frontend: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>',
+        infrastructure: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>'
+    };
+    
+    const icon = typeIcons[event.event_type] || typeIcons.api;
+    const keyMetric = getKeyMetric(event);
+    const timestamp = new Date(event.timestamp).toLocaleTimeString();
+    
+    let badges = '';
+    if (event.critical) {
+        badges = '<span class="event-badge critical">CRITICAL</span>';
+    } else if (event.flagged) {
+        badges = '<span class="event-badge flagged">FLAGGED</span>';
+    }
+    
+    return `
+        <div class="event-card ${event.critical ? 'critical' : ''} ${event.flagged ? 'flagged' : ''} ${isNew ? 'new' : ''}" data-severity="${event.severity}">
+            <div class="event-card-header">
+                <span class="event-type-icon">${icon}</span>
+                <span class="event-service">${escapeHtml(event.service_name)}</span>
+                <span class="event-time">${timestamp}</span>
+            </div>
+            <div class="event-card-body">
+                <div class="event-metric">${keyMetric}</div>
+                <div class="event-region">${escapeHtml(event.region)}</div>
+                ${event.customer_id ? `<div class="event-customer">Customer: ${escapeHtml(event.customer_id)}</div>` : ''}
+            </div>
+            ${badges}
+        </div>
+    `;
+}
+
+function getKeyMetric(event) {
+    const metrics = event.metrics || {};
+    
+    switch (event.event_type) {
+        case 'api':
+            return `Latency: ${metrics.latency_ms?.toFixed(0) || '?'}ms | Status: ${metrics.status_code || '?'}`;
+        case 'database':
+            return `Query: ${metrics.query_time_ms?.toFixed(0) || '?'}ms | Pool: ${metrics.connection_pool_size || '?'}`;
+        case 'frontend':
+            return `Load: ${metrics.load_time_ms?.toFixed(0) || '?'}ms`;
+        case 'infrastructure':
+            return `CPU: ${metrics.cpu_percent?.toFixed(0) || '?'}% | Mem: ${metrics.memory_percent?.toFixed(0) || '?'}%`;
+        default:
+            return event.message || 'No metrics';
+    }
+}
+
+function renderIssuesList() {
+    const issues = monitoringState.issues;
+    
+    if (issues.length === 0) {
+        elements.emptyIssues.style.display = 'block';
+        elements.issuesList.innerHTML = '';
+        return;
+    }
+    
+    elements.emptyIssues.style.display = 'none';
+    
+    const html = issues.map(issue => renderIssueCard(issue)).join('');
+    elements.issuesList.innerHTML = html;
+    
+    // Add expand/collapse handlers
+    elements.issuesList.querySelectorAll('.issue-expand').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const card = e.target.closest('.ai-issue-card');
+            card.classList.toggle('expanded');
+        });
+    });
+}
+
+function renderIssueCard(issue) {
+    const timestamp = new Date(issue.created_at).toLocaleTimeString();
+    const severityClass = issue.severity.toLowerCase();
+    const statusClass = issue.status.toLowerCase().replace(' ', '-');
+    
+    return `
+        <div class="ai-issue-card" data-status="${issue.status}">
+            <div class="issue-header">
+                <h4>${escapeHtml(issue.title)}</h4>
+                <div class="issue-badges">
+                    <span class="badge badge-${statusClass}">${escapeHtml(issue.status)}</span>
+                    <span class="badge badge-severity-${severityClass}">${escapeHtml(issue.severity)}</span>
+                    <span class="badge badge-ai">AI Generated</span>
+                </div>
+            </div>
+            <div class="issue-meta">
+                <span>${escapeHtml(issue.affected_services.join(', '))}</span>
+                <span>${timestamp}</span>
+            </div>
+            <button class="issue-expand">View Details</button>
+            <div class="issue-details">
+                <p>${escapeHtml(issue.description)}</p>
+                ${issue.workaround ? `<div class="issue-workaround"><strong>Workaround:</strong> ${escapeHtml(issue.workaround)}</div>` : ''}
+                <div class="issue-related">${issue.related_events.length} related events</div>
+            </div>
+        </div>
+    `;
+}
+
+function renderAlertsList() {
+    const alerts = monitoringState.alerts;
+    
+    if (alerts.length === 0) {
+        elements.emptyAlerts.style.display = 'block';
+        elements.alertsList.innerHTML = '';
+        return;
+    }
+    
+    elements.emptyAlerts.style.display = 'none';
+    
+    const html = alerts.map(alert => renderAlertCard(alert)).join('');
+    elements.alertsList.innerHTML = html;
+    
+    // Add expand/collapse handlers
+    elements.alertsList.querySelectorAll('.alert-expand').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const card = e.target.closest('.alert-card');
+            card.classList.toggle('expanded');
+        });
+    });
+}
+
+function renderAlertCard(alert) {
+    const timestamp = new Date(alert.created_at).toLocaleTimeString();
+    const typeLabel = alert.alert_type === 'engineering' ? 'Engineering Alert' : 'Customer Notice';
+    const typeClass = alert.alert_type;
+    
+    return `
+        <div class="alert-card" data-type="${alert.alert_type}">
+            <div class="alert-header">
+                <span class="alert-type-badge ${typeClass}">${typeLabel}</span>
+                <span class="alert-time">${timestamp}</span>
+            </div>
+            <div class="alert-subject">${escapeHtml(alert.subject)}</div>
+            <div class="alert-service">${escapeHtml(alert.affected_service)}</div>
+            <button class="alert-expand">View Email</button>
+            <div class="alert-body">
+                <pre>${escapeHtml(alert.body)}</pre>
+                ${alert.related_ticket_id ? `<div class="alert-ticket">Related Ticket: ${escapeHtml(alert.related_ticket_id)}</div>` : ''}
+            </div>
+        </div>
+    `;
 }

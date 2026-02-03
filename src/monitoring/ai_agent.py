@@ -197,3 +197,4 @@ Generate a JSON response with ALL of the following:
     def clear_processed_events(self):
         """Clear the set of processed event IDs."""
         self._processed_event_ids.clear()
+

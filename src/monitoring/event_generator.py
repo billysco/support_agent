@@ -142,13 +142,16 @@ class LogEventGenerator:
                     self._on_complete_callback()
                 break
 
-            # For event 4 (index 3), wait for AI to be ready first
+            # For event 4 (index 3), wait for AI to be ready first (if not already)
             if self._demo_mode and self._event_count == 3:
-                print(f"[Generator] Waiting for AI to be ready before critical event...")
-                self._ai_ready_event.wait()
-                if not self._running:
-                    break
-                print(f"[Generator] AI ready, showing critical event")
+                if not self._ai_ready_event.is_set():
+                    print(f"[Generator] Waiting for AI to be ready before critical event...")
+                    self._ai_ready_event.wait()
+                    if not self._running:
+                        break
+                    print(f"[Generator] AI ready, showing critical event")
+                else:
+                    print(f"[Generator] AI already ready, showing critical event immediately")
 
             event = self._create_demo_event() if self._demo_mode else self._create_random_event()
 

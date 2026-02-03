@@ -170,3 +170,4 @@ class TestKBContent:
         assert "enterprise" in content.lower()
         assert "professional" in content.lower()
         assert "hour" in content.lower()
+

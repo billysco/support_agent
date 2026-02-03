@@ -92,6 +92,15 @@ _monitoring_state = {
     "prefetched_alerts": None,
 }
 
+# Startup-cached AI data (pre-computed on app startup)
+_startup_cache_lock = threading.Lock()
+_startup_cache = {
+    "ready": False,
+    "critical_event": None,
+    "prefetched_issue": None,
+    "prefetched_alerts": None,
+}
+
 
 def _prefetch_ai_for_critical_event(critical_event: "LogEvent", generator: "LogEventGenerator"):
     """Pre-fetch AI analysis for the critical event before it appears in stream."""
@@ -123,6 +132,43 @@ def _prefetch_ai_for_critical_event(critical_event: "LogEvent", generator: "LogE
     # Signal generator that AI is ready - critical event can now appear
     generator.set_ai_ready()
     print("[Monitoring] Signaled generator: AI ready")
+
+
+def _startup_prefetch_ai():
+    """Pre-fetch AI analysis on application startup (runs in background thread)."""
+    global _startup_cache
+    print("[Startup] Starting background AI pre-fetch for demo critical event...")
+
+    try:
+        # Initialize LLM and retriever
+        llm = get_llm()
+        retriever = get_kb_retriever()
+
+        # Create AI agent
+        ai_agent = MonitoringAIAgent(llm, retriever)
+
+        # Create the critical event
+        critical_event = create_critical_api_event()
+
+        # Run AI analysis
+        print("[Startup] Running AI analysis on critical event...")
+        issue, alerts = ai_agent.analyze_flagged_event(critical_event, [critical_event])
+
+        with _startup_cache_lock:
+            _startup_cache["critical_event"] = critical_event
+            _startup_cache["prefetched_issue"] = issue
+            _startup_cache["prefetched_alerts"] = alerts
+            _startup_cache["ready"] = True
+
+        print(f"[Startup] AI pre-fetch complete and cached: issue={issue is not None}, alerts={len(alerts) if alerts else 0}")
+
+    except Exception as e:
+        print(f"[Startup] AI pre-fetch failed: {e}")
+        import traceback
+        traceback.print_exc()
+        # Mark as ready anyway so monitoring can still work (just without pre-cached data)
+        with _startup_cache_lock:
+            _startup_cache["ready"] = True
 
 
 def get_llm():
@@ -1145,8 +1191,23 @@ async def start_monitoring():
             retriever = get_kb_retriever()
             ai_agent = MonitoringAIAgent(llm, retriever)
 
-            # Create the critical event upfront (will be event #4)
-            critical_event = create_critical_api_event()
+            # Check if we have startup-cached AI data
+            with _startup_cache_lock:
+                has_cached_data = _startup_cache["ready"] and _startup_cache["prefetched_issue"] is not None
+
+            if has_cached_data:
+                # Use startup-cached critical event and AI data
+                with _startup_cache_lock:
+                    critical_event = create_critical_api_event()  # Create fresh with new ID
+                    critical_event.event_id = _startup_cache["critical_event"].event_id if _startup_cache["critical_event"] else critical_event.event_id
+                    _monitoring_state["prefetched_issue"] = _startup_cache["prefetched_issue"]
+                    _monitoring_state["prefetched_alerts"] = _startup_cache["prefetched_alerts"]
+                print("[Monitoring] Using startup-cached AI data (instant)")
+            else:
+                # Fallback: create fresh critical event (AI will be fetched on-demand)
+                critical_event = create_critical_api_event()
+                print("[Monitoring] No cached data, will use on-demand AI fetch")
+
             generator.set_critical_event(critical_event)
             _monitoring_state["critical_event"] = critical_event
 
@@ -1167,16 +1228,23 @@ async def start_monitoring():
             _monitoring_state["threshold_checker"] = threshold_checker
             _monitoring_state["ai_agent"] = ai_agent
 
-            # Start AI pre-fetch in background (will signal generator when ready)
-            prefetch_thread = threading.Thread(
-                target=_prefetch_ai_for_critical_event,
-                args=(critical_event, generator),
-                daemon=True
-            )
-            prefetch_thread.start()
+            if not has_cached_data:
+                # Start AI pre-fetch in background (will signal generator when ready)
+                prefetch_thread = threading.Thread(
+                    target=_prefetch_ai_for_critical_event,
+                    args=(critical_event, generator),
+                    daemon=True
+                )
+                prefetch_thread.start()
 
-            # Start generator (will pause before event 4 until AI is ready)
+            # Start generator (will pause before event 4 until AI is ready if not cached)
             generator.start()
+
+            if has_cached_data:
+                # Signal AI ready AFTER start() since start() clears the event
+                print("[Monitoring] Signaling AI ready (using cached data)")
+                generator.set_ai_ready()
+                print("[Monitoring] AI ready signal sent")
 
             return {
                 "success": True,
@@ -1236,6 +1304,7 @@ async def get_monitoring_status():
 async def get_monitoring_events(limit: int = 50):
     """Get recent events sorted by timestamp descending."""
     with _monitoring_lock:
+        running = _monitoring_state["running"]
         generator = _monitoring_state["generator"]
 
         # If stopped, return persisted events
@@ -1243,7 +1312,10 @@ async def get_monitoring_events(limit: int = 50):
             events = _monitoring_state["events"]
             if limit:
                 events = events[:limit]
-            return [event.model_dump(mode='json') for event in events]
+            return {
+                "running": running,
+                "events": [event.model_dump(mode='json') for event in events]
+            }
 
         events = generator.get_events(limit=None)
 
@@ -1256,7 +1328,7 @@ async def get_monitoring_events(limit: int = 50):
             critical_in_stream = any(e.event_id == critical_event.event_id for e in events)
 
             if critical_in_stream and prefetched_issue not in _monitoring_state["issues"]:
-                # Inject pre-fetched issue, alerts, and create ticket NOW
+                # Inject pre-fetched issue and alerts
                 print(f"[Monitoring] Critical event in stream - injecting pre-fetched data")
 
                 _monitoring_state["issues"].append(prefetched_issue)
@@ -1265,16 +1337,24 @@ async def get_monitoring_events(limit: int = 50):
                 if prefetched_alerts:
                     _monitoring_state["alerts"].extend(prefetched_alerts)
 
-                # Create ticket immediately
-                _create_monitoring_ticket(critical_event, prefetched_issue, prefetched_alerts)
-                print(f"[Monitoring] Created ticket for critical event")
+                # Create ticket in background thread (don't block the response)
+                ticket_thread = threading.Thread(
+                    target=_create_monitoring_ticket,
+                    args=(critical_event, prefetched_issue, prefetched_alerts),
+                    daemon=True
+                )
+                ticket_thread.start()
+                print(f"[Monitoring] Started background ticket creation")
 
         _monitoring_state["events"] = events
 
         if limit:
             events = events[:limit]
 
-        return [event.model_dump(mode='json') for event in events]
+        return {
+            "running": running,
+            "events": [event.model_dump(mode='json') for event in events]
+        }
 
 
 def _create_monitoring_ticket(event: LogEvent, issue: AIIssue, alerts: list[AIAlert]) -> None:
@@ -1353,10 +1433,21 @@ async def get_ai_actions():
     with _monitoring_lock:
         issues = _monitoring_state["issues"]
         alerts = _monitoring_state["alerts"]
-        
+
         return {
             "issues": [issue.model_dump(mode='json') for issue in issues],
             "alerts": [alert.model_dump(mode='json') for alert in alerts]
+        }
+
+
+@app.get("/api/monitoring/cache-status")
+async def get_cache_status():
+    """Check if AI pre-fetch cache is ready (for frontend optimization)."""
+    with _startup_cache_lock:
+        return {
+            "ready": _startup_cache["ready"],
+            "has_issue": _startup_cache["prefetched_issue"] is not None,
+            "has_alerts": _startup_cache["prefetched_alerts"] is not None and len(_startup_cache["prefetched_alerts"]) > 0
         }
 
 
@@ -1437,17 +1528,22 @@ async def health_check():
 def run_server(host: str = "127.0.0.1", port: int = 8000):
     """Run the server using uvicorn."""
     import uvicorn
-    
+
     print("\n" + "=" * 60)
     print("  SUPPORT TRIAGE SYSTEM - Web Server")
     print("=" * 60)
     print(f"\n  Starting server at http://{host}:{port}")
     print("  Press Ctrl+C to stop\n")
-    
+
     # Pre-initialize LLM
     get_llm()
     print("  Mode: OpenAI")
-    
+
+    # Start background AI pre-fetch for monitoring demo
+    print("  Starting background AI pre-fetch for monitoring...")
+    prefetch_thread = threading.Thread(target=_startup_prefetch_ai, daemon=True)
+    prefetch_thread.start()
+
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 

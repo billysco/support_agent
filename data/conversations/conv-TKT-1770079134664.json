@@ -1,0 +1,84 @@
+{
+  "conversation_id": "conv-TKT-1770079134664",
+  "original_ticket_id": "TKT-1770079134664",
+  "customer_email": "bill@testcompany.com",
+  "customer_name": "bill",
+  "account_tier": "enterprise",
+  "product": "api platform",
+  "subject": "my api is running slowly",
+  "messages": [
+    {
+      "message_id": "TKT-1770079134664",
+      "timestamp": "2026-02-03T00:38:54.664000Z",
+      "sender_type": "customer",
+      "sender_id": "bill@testcompany.com",
+      "content": "Subject: my api is running slowly\n\napi is running slowly with intermittent outages",
+      "extracted_fields": {
+        "environment": "prod",
+        "region": "us-east-1",
+        "error_message": null,
+        "reproduction_steps": null,
+        "impact": "api is running slowly with intermittent outages",
+        "requested_action": "daily activities",
+        "order_id": null,
+        "missing_fields": []
+      },
+      "is_auto_reply": false
+    },
+    {
+      "message_id": "TKT-1770079134664-followup-1770079213649",
+      "timestamp": "2026-02-03T00:40:13.649000Z",
+      "sender_type": "customer",
+      "sender_id": "bill@testcompany.com",
+      "content": "prod environment, us-east-1, and just daily activities",
+      "extracted_fields": {
+        "environment": "prod",
+        "region": "us-east-1",
+        "error_message": null,
+        "reproduction_steps": null,
+        "impact": null,
+        "requested_action": "daily activities",
+        "order_id": null,
+        "missing_fields": []
+      },
+      "is_auto_reply": false
+    },
+    {
+      "message_id": "reply-1770079228.245849",
+      "timestamp": "2026-02-02T19:40:28.245855",
+      "sender_type": "agent",
+      "sender_id": "system",
+      "content": "Thank you for confirming that your API is running in the production environment in the us-east-1 region and that you're experiencing slow performance along with intermittent outages during daily activities. We are aware of an issue affecting the API and are actively investigating the situation. Our engineering team is working to resolve this as quickly as possible. We will provide updates every hour until the issue is resolved [KB:outage_procedures#initial-response-template]. Please rest assured that we are prioritizing this matter due to its impact on your operations.",
+      "extracted_fields": null,
+      "is_auto_reply": false
+    }
+  ],
+  "status": "resolved",
+  "pending_fields": [],
+  "merged_extracted_fields": {
+    "environment": "prod",
+    "region": "us-east-1",
+    "error_message": null,
+    "reproduction_steps": null,
+    "impact": "api is running slowly with intermittent outages",
+    "requested_action": "daily activities",
+    "order_id": null,
+    "missing_fields": []
+  },
+  "current_triage": {
+    "urgency": "P1",
+    "category": "bug",
+    "sentiment": "negative",
+    "confidence": 0.9,
+    "rationale": "The customer reported that the API is running slowly with intermittent outages. The follow-up provided the environment and region, indicating a production issue in the US East region."
+  },
+  "current_routing": {
+    "team": "engineering",
+    "sla_hours": 4,
+    "escalation": true,
+    "reasoning": "Routed to engineering due to bug classification. SLA set based on enterprise tier and P1 priority. Escalated per enterprise account policy."
+  },
+  "created_at": "2026-02-03T00:38:54.664000Z",
+  "updated_at": "2026-02-02T19:40:28.246597",
+  "resolved_at": "2026-02-02T19:40:28.246575"
+}

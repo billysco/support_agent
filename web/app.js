@@ -19,7 +19,13 @@ const monitoringState = {
     alerts: [],
     pollInterval: null,
     autoScroll: true,
-    lastEventId: null
+    lastEventId: null,
+    // Delayed display state for simulating LLM call latency
+    criticalEventSeen: false,
+    criticalEventTime: null,
+    aiActionsRevealed: false,
+    pendingIssues: [],
+    pendingAlerts: []
 };
 
 // DOM Elements
@@ -179,12 +185,17 @@ function switchView(viewName) {
     elements.navItems.forEach(item => {
         item.classList.toggle('active', item.dataset.view === viewName);
     });
-    
+
     // Update views
     document.querySelectorAll('.view').forEach(view => {
         view.classList.remove('active');
     });
-    
+
+    // Stop monitoring polling when leaving the monitoring view
+    if (viewName !== 'monitoring') {
+        stopPolling();
+    }
+
     switch (viewName) {
         case 'tickets':
             elements.viewTickets.classList.add('active');
@@ -255,7 +266,13 @@ async function updateTicketsList() {
     } catch (error) {
         console.error('Failed to fetch monitoring tickets:', error);
     }
-    
+
+    // If AI actions haven't been revealed yet (waiting for delay after critical event),
+    // don't show monitoring-generated tickets yet
+    if (monitoringState.criticalEventSeen && !monitoringState.aiActionsRevealed) {
+        monitoringTickets = []; // Hide monitoring tickets until reveal
+    }
+
     // Merge with user tickets (avoid duplicates)
     const userTicketIds = new Set(state.tickets.map(t => t.ticket_id));
     const newMonitoringTickets = monitoringTickets.filter(t => !userTicketIds.has(t.ticket_id));
@@ -1383,9 +1400,12 @@ async function checkMonitoringStatus() {
             const data = await response.json();
             monitoringState.running = data.running;
             updateMonitoringUI();
-            
+
             if (data.running) {
                 startPolling();
+            } else {
+                // Monitoring is not running, ensure polling is stopped
+                stopPolling();
             }
         }
     } catch (error) {
@@ -1395,30 +1415,37 @@ async function checkMonitoringStatus() {
 
 async function toggleMonitoring() {
     const endpoint = monitoringState.running ? '/api/monitoring/stop' : '/api/monitoring/start';
-    
+
     elements.toggleMonitoring.disabled = true;
-    
+
     try {
         const response = await fetch(endpoint, { method: 'POST' });
-        
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || 'Failed to toggle monitoring');
         }
-        
+
         const data = await response.json();
         monitoringState.running = data.running;
-        
+
         if (monitoringState.running) {
+            // Reset delayed reveal state when starting
+            monitoringState.criticalEventSeen = false;
+            monitoringState.criticalEventTime = null;
+            monitoringState.aiActionsRevealed = false;
+            monitoringState.pendingIssues = [];
+            monitoringState.pendingAlerts = [];
+
             startPolling();
             showToast('Monitoring started', 'success');
         } else {
             stopPolling();
             showToast('Monitoring stopped', 'info');
         }
-        
+
         updateMonitoringUI();
-        
+
     } catch (error) {
         showToast(`Error: ${error.message}`, 'error');
     } finally {
@@ -1429,24 +1456,30 @@ async function toggleMonitoring() {
 async function clearMonitoringLogs() {
     try {
         const response = await fetch('/api/monitoring/clear', { method: 'POST' });
-        
+
         if (!response.ok) {
             throw new Error('Failed to clear logs');
         }
-        
+
         // Clear local state
         monitoringState.events = [];
         monitoringState.issues = [];
         monitoringState.alerts = [];
         monitoringState.lastEventId = null;
-        
+        // Reset delayed reveal state
+        monitoringState.criticalEventSeen = false;
+        monitoringState.criticalEventTime = null;
+        monitoringState.aiActionsRevealed = false;
+        monitoringState.pendingIssues = [];
+        monitoringState.pendingAlerts = [];
+
         // Update UI
         renderEventList();
         renderIssuesList();
         renderAlertsList();
-        
+
         showToast('Logs cleared', 'success');
-        
+
     } catch (error) {
         showToast(`Error: ${error.message}`, 'error');
     }
@@ -1496,33 +1529,29 @@ function stopPolling() {
 
 async function pollMonitoringData() {
     try {
-        // Fetch events, AI actions, and status in parallel
-        const [eventsResponse, actionsResponse, statusResponse] = await Promise.all([
+        // Fetch events and AI actions in parallel
+        const [eventsResponse, actionsResponse] = await Promise.all([
             fetch('/api/monitoring/events?limit=50'),
-            fetch('/api/monitoring/ai-actions'),
-            fetch('/api/monitoring/status')
+            fetch('/api/monitoring/ai-actions')
         ]);
 
         if (eventsResponse.ok) {
-            const events = await eventsResponse.json();
-            updateEvents(events);
+            const data = await eventsResponse.json();
+            updateEvents(data.events);
+
+            // Check if monitoring has stopped (demo completed)
+            if (!data.running && monitoringState.running) {
+                console.log('[Monitoring] Demo completed, stopping polling');
+                monitoringState.running = false;
+                updateMonitoringUI();
+                stopPolling();
+                return; // Don't process AI actions if we're stopping
+            }
         }
 
         if (actionsResponse.ok) {
             const actions = await actionsResponse.json();
             updateAIActions(actions);
-        }
-
-        // Check if demo auto-completed (server set running=false)
-        if (statusResponse.ok) {
-            const status = await statusResponse.json();
-            if (!status.running && monitoringState.running) {
-                // Demo auto-completed
-                monitoringState.running = false;
-                updateMonitoringUI();
-                stopPolling();
-                showToast('Demo completed (10 events)', 'success');
-            }
         }
 
     } catch (error) {
@@ -1535,32 +1564,65 @@ function updateEvents(newEvents) {
     const hasNewEvents = newEvents.length > 0 &&
         (!monitoringState.lastEventId || newEvents[0].event_id !== monitoringState.lastEventId);
 
-    // Only update if there are changes (reduces blinking)
-    if (!hasNewEvents && monitoringState.events.length === newEvents.length) {
-        return;
-    }
-
     monitoringState.events = newEvents;
 
     if (newEvents.length > 0) {
         monitoringState.lastEventId = newEvents[0].event_id;
     }
 
+    // Check if critical event just appeared (for delayed AI actions reveal)
+    if (!monitoringState.criticalEventSeen) {
+        const criticalEvent = newEvents.find(e => e.critical);
+        if (criticalEvent) {
+            monitoringState.criticalEventSeen = true;
+            monitoringState.criticalEventTime = Date.now();
+            console.log('[Monitoring] Critical event detected, scheduling AI actions reveal in 1s');
+
+            // Schedule delayed reveal of AI actions (simulates LLM processing)
+            setTimeout(() => {
+                monitoringState.aiActionsRevealed = true;
+                // Reveal any pending issues/alerts
+                if (monitoringState.pendingIssues.length > 0) {
+                    monitoringState.issues = monitoringState.pendingIssues;
+                    renderIssuesList();
+                }
+                if (monitoringState.pendingAlerts.length > 0) {
+                    monitoringState.alerts = monitoringState.pendingAlerts;
+                    renderAlertsList();
+                }
+                // Refresh tickets list to show auto-generated ticket
+                updateTicketsList();
+                console.log('[Monitoring] AI actions revealed');
+            }, 1200); // 1.2 second delay to simulate LLM call
+        }
+    }
+
     renderEventList(hasNewEvents);
 }
 
 function updateAIActions(actions) {
+    const newIssues = actions.issues || [];
+    const newAlerts = actions.alerts || [];
+
+    // If AI actions haven't been revealed yet (waiting for delay after critical event),
+    // store them as pending instead of displaying immediately
+    if (monitoringState.criticalEventSeen && !monitoringState.aiActionsRevealed) {
+        monitoringState.pendingIssues = newIssues;
+        monitoringState.pendingAlerts = newAlerts;
+        return; // Don't render yet - will be revealed after delay
+    }
+
     const hadIssues = monitoringState.issues.length;
     const hadAlerts = monitoringState.alerts.length;
-    
-    monitoringState.issues = actions.issues || [];
-    monitoringState.alerts = actions.alerts || [];
-    
+
+    monitoringState.issues = newIssues;
+    monitoringState.alerts = newAlerts;
+
     // Only re-render if there are changes
     if (monitoringState.issues.length !== hadIssues) {
         renderIssuesList();
     }
-    
+
     if (monitoringState.alerts.length !== hadAlerts) {
         renderAlertsList();
     }

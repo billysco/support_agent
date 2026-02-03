@@ -12,7 +12,7 @@ pip install -r requirements.txt
 python -m src.server
 # Open http://localhost:8000
 
-# Run with real LLM
+# Run with LLM
 set OPENAI_API_KEY=sk-your-key-here  # Windows
 export OPENAI_API_KEY=sk-your-key-here  # Linux/Mac
 python -m src.server
